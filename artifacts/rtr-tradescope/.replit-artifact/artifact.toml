@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "RTR-TradeScope"
+description = "A polished professional trading journal and analytics workspace for active traders to record trades, review performance, manage alerts, and refine strategies using realistic local mock data."
+version = "1.0.0"
+id = "artifacts/rtr-tradescope"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24990
+
+[services.development]
+run = "pnpm --filter @workspace/rtr-tradescope run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/rtr-tradescope", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/rtr-tradescope/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24990"
+BASE_PATH = "/"

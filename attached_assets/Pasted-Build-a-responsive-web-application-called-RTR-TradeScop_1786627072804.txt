@@ -1,0 +1,395 @@
+Build a responsive web application called **RTR-TradeScope**.
+
+RTR-TradeScope is a professional trading journal, analytics, and alert-management platform for active traders.
+
+It does **not** execute trades and must not connect to a broker for order placement.
+
+The purpose is to help traders:
+
+* Record completed and planned trades
+* Analyze historical performance
+* Identify strengths and weaknesses
+* Review strategy performance
+* Manage price alerts
+* Improve trading discipline
+
+## Product Identity
+
+Name: **RTR-TradeScope**
+
+Tagline:
+
+**Track. Review. Refine.**
+
+The design should feel like a serious professional trading platform.
+
+Use:
+
+* Dark premium dashboard
+* Clean financial UI
+* Strong typography
+* Minimal visual noise
+* Professional charts
+* Clear data hierarchy
+* Responsive desktop-first layout
+
+Do not copy TradingView, MetaTrader, or another product directly.
+
+Create an original interface.
+
+## Main Navigation
+
+Create a persistent left sidebar with:
+
+* Dashboard
+* Journal
+* Add Trade
+* Analytics
+* Alerts
+* Strategies
+* Settings
+
+Place the **RTR-TradeScope** logo/name at the top.
+
+Include a compact trader profile section at the bottom.
+
+## Dashboard
+
+The Dashboard should immediately show the trader's overall performance.
+
+Create KPI cards for:
+
+* Total Trades
+* Win Rate
+* Net P/L
+* Average Risk/Reward
+* Profit Factor
+* Current Streak
+
+Add a large chart titled:
+
+**Performance Overview**
+
+Allow visual switching between:
+
+* Cumulative P/L
+* R-Multiple
+* Win Rate
+
+Below this, create:
+
+### Recent Trades
+
+Columns:
+
+Symbol
+Direction
+Entry
+Exit
+R:R
+P/L
+Result
+Strategy
+Session
+Date
+
+BUY and SELL should be visually distinct.
+
+Wins, losses, and breakeven trades should also be visually distinguishable.
+
+## Add Trade
+
+Create a professional trade-entry page.
+
+Fields:
+
+* Symbol
+* Direction: BUY / SELL
+* Entry Price
+* Stop Loss
+* Take Profit
+* Exit Price
+* Position Size
+* Date
+* Trading Session
+* Strategy / Setup
+* Trade Status: Planned / Open / Closed
+* Result
+* Notes
+* Screenshot Upload
+
+Trading Session options:
+
+* Asian
+* London
+* New York
+* Overlap
+* Other
+
+Automatically calculate and display:
+
+* Risk
+* Potential Reward
+* Risk/Reward Ratio
+* Realized R-Multiple when exit price is available
+
+Include a prominent:
+
+**Save Trade**
+
+button.
+
+Do not use fake backend requests yet.
+
+Use clean frontend state and mock data.
+
+## Journal
+
+Create a searchable and filterable trading journal.
+
+Filters:
+
+* Symbol
+* Date
+* Result
+* Direction
+* Session
+* Strategy
+* Trade Status
+
+Create a table or card view showing all saved trades.
+
+Clicking a trade should open a detailed trade view.
+
+The trade detail page should include:
+
+* Instrument
+* Direction
+* Entry
+* Stop Loss
+* Take Profit
+* Exit
+* Position Size
+* R:R
+* R-Multiple
+* P/L
+* Session
+* Strategy
+* Date
+* Notes
+* Screenshot
+* Result
+
+Add actions for:
+
+* Edit Trade
+* Delete Trade
+
+## Analytics
+
+Create a detailed analytics dashboard.
+
+Display:
+
+* Win Rate
+* Average Winner
+* Average Loser
+* Average R:R
+* Profit Factor
+* Total P/L
+* Best Instrument
+* Worst Instrument
+* Best Strategy
+* Worst Strategy
+* Long Performance
+* Short Performance
+
+Create charts for:
+
+### Performance Over Time
+
+Show cumulative P/L or R-Multiple.
+
+### Win / Loss Distribution
+
+Show winning, losing, and breakeven trades.
+
+### Performance by Instrument
+
+Example:
+
+XAUUSD
+EURUSD
+GBPUSD
+US30
+NAS100
+
+### Performance by Trading Session
+
+Asian
+London
+New York
+Overlap
+
+### Performance by Strategy
+
+Compare different setups and strategies.
+
+The analytics page should help the trader answer:
+
+**What am I doing well?**
+
+and
+
+**Where am I losing money?**
+
+## Strategies
+
+Create a page where users can define trading strategies.
+
+Each strategy should contain:
+
+* Strategy Name
+* Description
+* Preferred Markets
+* Preferred Session
+* Risk Rules
+* Entry Rules
+* Exit Rules
+* Notes
+
+Example strategies:
+
+* London Sweep
+* Break and Retest
+* NY Reversal
+* Trend Continuation
+
+Show statistics for each strategy using mock trade history.
+
+## Alerts
+
+Create an alert-management page.
+
+Allow creation of alerts with:
+
+* Instrument
+* Target Price
+* Condition: Above / Below
+* Alert Note
+
+Display:
+
+### Active Alerts
+
+### Triggered Alerts
+
+Each alert should show:
+
+* Instrument
+* Target price
+* Condition
+* Status
+* Created date
+
+Do not fake live market prices.
+
+The frontend only needs to manage alert state for now.
+
+Live price monitoring will be implemented later using the FastAPI backend.
+
+## Settings
+
+Create settings sections for:
+
+### Trading Preferences
+
+* Default Currency
+* Default Risk %
+* Preferred Markets
+* Preferred Trading Sessions
+
+### Appearance
+
+* Dark mode should be the default
+* Compact / Comfortable layout
+
+### Account
+
+Use placeholders only.
+
+Do not build authentication yet unless absolutely necessary for frontend navigation.
+
+## Frontend Architecture
+
+Build the frontend cleanly so that mock data can later be replaced with API calls.
+
+Use reusable:
+
+* Components
+* Hooks
+* Types/interfaces
+* Services
+* Page layouts
+
+Keep API-related logic separated from UI components.
+
+Create a service layer prepared for these future endpoints:
+
+POST /api/trades
+
+GET /api/trades
+
+GET /api/trades/{id}
+
+PUT /api/trades/{id}
+
+DELETE /api/trades/{id}
+
+GET /api/analytics/summary
+
+GET /api/analytics/performance
+
+GET /api/analytics/instruments
+
+GET /api/analytics/strategies
+
+POST /api/alerts
+
+GET /api/alerts
+
+DELETE /api/alerts/{id}
+
+POST /api/strategies
+
+GET /api/strategies
+
+PUT /api/strategies/{id}
+
+DELETE /api/strategies/{id}
+
+## Technology Direction
+
+Prefer:
+
+* React
+* TypeScript
+* Tailwind CSS
+* Reusable chart library
+* Clean component structure
+
+Do not add a backend.
+
+Do not add Supabase yet.
+
+Do not implement broker connectivity.
+
+Do not implement live trading.
+
+Do not implement fake market prices.
+
+This phase is strictly the polished frontend MVP.
+
+Use realistic mock trading data throughout the interface.
+
+The final frontend should be clean enough that it can later be exported and connected directly to a Python FastAPI backend.
