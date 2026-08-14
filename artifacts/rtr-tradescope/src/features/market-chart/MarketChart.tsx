@@ -89,5 +89,19 @@ export const MarketChart = forwardRef<MarketChartHandle, { candles: MarketCandle
     series.priceScale().applyOptions({ autoScale: true });
   }, [activePlan, candles]);
 
-  return <div ref={container} data-testid="rtr-market-chart-canvas" className="h-full min-h-[520px] w-full" />;
+  const target = activePlan?.tp1 == null ? null : Number(activePlan.tp1);
+  const targetLabel = activePlan
+    ? target !== null && Number.isFinite(target)
+      ? `TP1 · ${target.toFixed(activePlan.symbol === "XAUUSD" ? 2 : 5)}`
+      : "TP1 · UNAVAILABLE (<1.5R)"
+    : "TP1 · WAITING FOR CONFIRMED ENTRY";
+
+  return (
+    <div className="relative h-full min-h-[520px] w-full">
+      <div ref={container} data-testid="rtr-market-chart-canvas" className="h-full min-h-[520px] w-full" />
+      <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-md border border-[#31584f] bg-[#10201ed9] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[.12em] text-[#65cfae] shadow-lg">
+        {targetLabel}
+      </div>
+    </div>
+  );
 });
