@@ -85,6 +85,7 @@ import { usePersistentState } from "@/hooks/usePersistentState";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { MarketChartPage } from "@/features/market-chart/MarketChartPage";
+import { SyntheticMarketsPage } from "@/features/synthetics/SyntheticMarketsPage";
 import { tradePrefill } from "@/features/market-chart/services/tradePrefill";
 import { TradingAccountsSettings } from "@/features/settings/TradingAccountsSettings";
 import { alertResource, strategyResource, tradeResource, useBackendCollection } from "@/services/backendData";
@@ -331,6 +332,7 @@ const navItems = [
     icon: CandlestickChart,
   },
   { href: "/market-chart", label: "RTR Market Chart", icon: LineChart },
+  { href: "/synthetics", label: "Synthetic Markets", icon: Activity },
   { href: "/alerts", label: "Alerts", icon: Bell },
 ];
 const workspaceItems = [
@@ -2914,6 +2916,7 @@ function WorkspaceRouter() {
   else if (location === "/analytics") page = <Analytics trades={trades} />;
   else if (location === "/tradingview") page = <TradingViewPage createAlert={createAlert} />;
   else if (location === "/market-chart") page = <MarketChartPage createAlert={createAlert} />;
+  else if (location === "/synthetics") page = <SyntheticMarketsPage />;
   else if (location === "/alerts")
     page = <Alerts alerts={alerts} setAlerts={setAlerts} />;
   else if (location === "/strategies")
