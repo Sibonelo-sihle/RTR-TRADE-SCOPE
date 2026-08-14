@@ -7,7 +7,7 @@ import { SetupActions } from "@/features/market-chart/SetupActions";
 import { chartSnapshot, downloadSnapshot, snapshotFilename } from "@/features/market-chart/services/snapshot";
 import { sessionForTimestamp, tradePrefill } from "@/features/market-chart/services/tradePrefill";
 import { StructureControls } from "@/features/market-chart/StructureControls";
-import { StructurePanel } from "@/features/market-chart/StructurePanel";
+import { StructurePanel, type AnalysisActivity } from "@/features/market-chart/StructurePanel";
 import { AnalysisSettings } from "@/features/market-chart/AnalysisSettings";
 import { analyzeMultiTimeframe } from "@/features/market-chart/analysis/multiTimeframe";
 import { analyzeSignals } from "@/features/market-chart/analysis/signals";
@@ -15,12 +15,11 @@ import type { AnalysisSettings as SignalSettings, RTRSignal, StructureVisibility
 import type { PriceAlert } from "@/types/domain";
 import { marketData } from "@/services/marketData";
 import { toast } from "@/hooks/use-toast";
+import { nextMarketRefresh } from "@/features/market-chart/services/marketRefresh";
 import type { MarketCandle, MarketDataStatus, MarketSymbol, MarketTimeframe } from "@/types/market";
 
-const symbols: MarketSymbol[] = ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY"];
+const symbolLabels: Record<MarketSymbol, string> = { XAUUSD: "XAUUSD / Gold", EURUSD: "EURUSD", GBPUSD: "GBPUSD", USDJPY: "USDJPY" };
 const timeframes: MarketTimeframe[] = ["5m", "15m", "1H", "4H"];
-const pollIntervals: Record<MarketTimeframe, number> = { "5m": 300_000, "15m": 900_000, "1H": 3_600_000, "4H": 14_400_000 };
-
 function formatClock(value: Date | null) {
   return value?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) ?? "—";
 }
@@ -58,6 +57,7 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [nextRefreshAt, setNextRefreshAt] = useState<Date | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [activity, setActivity] = useState<AnalysisActivity[]>([]);
   const [visibility, setVisibility] = useState<StructureVisibility>({ supply: true, demand: true, levels: true, hideMitigated: false, timeframes: { "4H": true, "1H": true, "15m": true, "5m": true } });
   const [signalSettings, setSignalSettings] = useState<SignalSettings>({ rsiLength: 14, rsiOversold: 30, rsiOverbought: 70, threshold: 4, trendEnabled: true, emaLength: 50, retestSensitivity: 2, rejectionSensitivity: 2, cooldownBars: 20, showMarkers: true, showRsi: false });
   const [selected, setSelected] = useState<RTRSignal | null>(null);
@@ -81,7 +81,7 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
     const version = requestVersion.current;
     if (initial) setLoading(true);
     try {
-      const providerStatus = initial || reconnectingRef.current || !statusRef.current ? await marketData.getStatus() : statusRef.current;
+      const providerStatus = reconnectingRef.current || !statusRef.current ? await marketData.getStatus() : statusRef.current;
       if (version !== requestVersion.current) return;
       setStatus(providerStatus);
       if (!providerStatus.connected) throw new Error(providerStatus.detail || `${providerStatus.provider} is offline.`);
@@ -91,14 +91,22 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
       const previous = candleSetsRef.current;
       const nextSets = { ...(previous ?? {}), ...Object.fromEntries(entries) } as Record<MarketTimeframe, MarketCandle[]>;
       if (timeframes.every((item) => nextSets[item]?.length)) {
-        if (!previous || entries.some(([item, values]) => !sameCandles(previous[item], values))) setCandleSets(nextSets);
+        const changed = !previous || entries.some(([item, values]) => !sameCandles(previous[item], values));
+        if (changed) setCandleSets(nextSets);
         const refreshedAt = new Date();
+        const confirmedChanges = previous ? entries.filter(([item, values]) => previous[item]?.at(-2)?.time !== values.at(-2)?.time) : [];
+        if (!previous || confirmedChanges.length) {
+          const events: AnalysisActivity[] = previous
+            ? [...confirmedChanges.map(([item, values]) => ({ id: `${item}-${values.at(-2)?.time}`, time: refreshedAt, message: `New ${item} candle confirmed` })), { id: `mtf-${refreshedAt.getTime()}`, time: refreshedAt, message: "MTF structure recalculated from closed candles" }]
+            : [{ id: `history-${refreshedAt.getTime()}`, time: refreshedAt, message: `${symbol} market history loaded and analyzed` }];
+          setActivity((current) => [...events, ...current].slice(0, 5));
+        }
         setLastUpdated(refreshedAt);
         setError("");
         setReconnecting(false);
       }
       const completedAt = Date.now();
-      for (const item of requested) dueAt.current[item] = completedAt + pollIntervals[item];
+      for (const item of requested) dueAt.current[item] = nextMarketRefresh(item, completedAt);
       setNextRefreshAt(new Date(Math.min(...Object.values(dueAt.current).filter((value) => value > completedAt))));
     } catch (caught) {
       setError(errorMessage(caught));
@@ -116,15 +124,15 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
     requestVersion.current += 1;
     candleSetsRef.current = null;
     setCandleSets(null);
-    setStatus(null);
     setError("");
     setReconnecting(false);
     setLastUpdated(null);
+    setActivity([]);
     notifiedSignals.current.clear();
     signalBaselineScopes.current.clear();
     lastClosedByScope.current.clear();
     const startedAt = Date.now();
-    dueAt.current = Object.fromEntries(timeframes.map((item) => [item, startedAt + pollIntervals[item]])) as Record<MarketTimeframe, number>;
+    dueAt.current = Object.fromEntries(timeframes.map((item) => [item, nextMarketRefresh(item, startedAt)])) as Record<MarketTimeframe, number>;
     void refresh(timeframes, true);
   }, [refresh, symbol]);
 
@@ -145,6 +153,7 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
   const visibleLevels = useMemo(() => analysis?.levels.filter((level) => visibility.levels && visibility.timeframes[level.timeframe]) ?? [], [analysis, visibility]);
   const candles = candleSets?.[timeframe] ?? [];
   const signalAnalysis = useMemo(() => analysis && candles.length ? analyzeSignals(symbol, timeframe, candles, analysis, signalSettings) : null, [analysis, candles, signalSettings, symbol, timeframe]);
+  const availableSymbols = status?.symbols.filter((item): item is MarketSymbol => item in symbolLabels) ?? [symbol];
   useEffect(() => {
     if (!signalAnalysis) return;
     const scope = `${symbol}:${timeframe}`;
@@ -196,7 +205,7 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
 
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#263541] bg-[#121b23] p-3">
         <select data-testid="select-market-symbol" aria-label="Market symbol" value={symbol} onChange={(event) => setSymbol(event.target.value as MarketSymbol)} className="rounded-lg border border-[#30404c] bg-[#0c141b] px-3 py-2 text-[11px] font-semibold text-[#d4dfe1]">
-          {symbols.map((item) => <option key={item}>{item}</option>)}
+          {availableSymbols.map((item) => <option key={item} value={item}>{symbolLabels[item]}</option>)}
         </select>
         <div className="flex rounded-lg border border-[#30404c] bg-[#0c141b] p-1">
           {timeframes.map((item) => <button key={item} data-testid={`button-timeframe-${item}`} onClick={() => setTimeframe(item)} className={`rounded-md px-3 py-1.5 text-[10px] font-semibold ${timeframe === item ? "bg-[#315e55] text-[#9ae5ce]" : "text-[#71818d] hover:text-[#b8c6ca]"}`}>{item}</button>)}
@@ -218,7 +227,7 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
             {loading ? <div><RefreshCw size={22} className="mx-auto animate-spin text-[#4ce0b1]" /><div className="mt-3 text-[11px] text-[#7f909a]">Loading real {symbol} multi-timeframe structure…</div></div> : <div className="max-w-md"><AlertTriangle size={24} className="mx-auto text-[#df8a72]" /><div className="mt-3 text-[13px] font-bold text-[#d9e3e4]">Market data unavailable</div><div role="alert" className="mt-2 text-[11px] leading-relaxed text-[#81909a]">{error}</div></div>}
           </div>}
         </div>
-        {analysis && signalAnalysis && <StructurePanel symbol={symbol} timeframe={timeframe} analysis={analysis} signals={signalAnalysis} settings={signalSettings} />}
+        {analysis && signalAnalysis && <StructurePanel symbol={symbol} timeframe={timeframe} candles={candles} analysis={analysis} signals={signalAnalysis} settings={signalSettings} lastUpdated={lastUpdated} now={now} activity={activity} />}
       </div>
       <div className="mt-3 flex items-center gap-2 text-[10px] text-[#62737e]"><CandlestickChart size={13} /> Candles and future RTR analysis use the same provider dataset. Analysis only — no trade execution.</div>
     </>

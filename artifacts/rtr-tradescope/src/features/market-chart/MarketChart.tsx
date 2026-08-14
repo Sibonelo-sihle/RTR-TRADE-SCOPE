@@ -1,19 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { CandlestickSeries, ColorType, CrosshairMode, createChart, createSeriesMarkers, type IChartApi, type SeriesMarker, type UTCTimestamp } from "lightweight-charts";
 import { StructureOverlay } from "@/features/market-chart/StructureOverlay";
+import { signalMarkers } from "@/features/market-chart/services/signalMarkers";
 import type { RTRSignal, StructureLevel, StructureZone } from "@/features/market-chart/analysis/types";
 import type { MarketCandle } from "@/types/market";
-
-function signalMarkers(signals: RTRSignal[]): SeriesMarker<UTCTimestamp>[] {
-  return signals.map((signal) => ({
-    time: signal.timestamp as UTCTimestamp,
-    position: signal.direction === "BUY" ? "belowBar" : "aboveBar",
-    color: signal.direction === "BUY" ? "#4ce0b1" : "#ec8178",
-    shape: signal.direction === "BUY" ? "arrowUp" : "arrowDown",
-    text: `RTR ${signal.direction} RETEST ${signal.score}/5`,
-    size: 1,
-  }));
-}
 
 export interface MarketChartHandle { takeScreenshot: () => HTMLCanvasElement | null }
 

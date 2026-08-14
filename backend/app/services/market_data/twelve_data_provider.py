@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from math import isfinite
+from threading import Lock
 from time import monotonic
 from typing import Any
 
@@ -26,6 +27,7 @@ class TwelveDataMarketDataProvider(MarketDataProvider):
         self.timeout_seconds = timeout_seconds
         self._availability_checked_at = 0.0
         self._availability_result: tuple[bool, str | None] | None = None
+        self._availability_lock = Lock()
 
     def _request(self, params: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
@@ -52,19 +54,23 @@ class TwelveDataMarketDataProvider(MarketDataProvider):
 
     def availability(self) -> tuple[bool, str | None]:
         now = monotonic()
-        if self._availability_result is not None and now - self._availability_checked_at < 15:
+        if self._availability_result is not None and now - self._availability_checked_at < 600:
             return self._availability_result
-        try:
-            payload = self._request({"symbol": self.symbol_map["XAUUSD"], "interval": "15min", "outputsize": 1, "timezone": "UTC"})
-            if not payload.get("values"):
-                result = (False, "Twelve Data returned no XAUUSD candles.")
-            else:
-                result = (True, None)
-        except MarketDataUnavailable as error:
-            result = (False, str(error))
-        self._availability_checked_at = now
-        self._availability_result = result
-        return result
+        with self._availability_lock:
+            now = monotonic()
+            if self._availability_result is not None and now - self._availability_checked_at < 600:
+                return self._availability_result
+            try:
+                payload = self._request({"symbol": self.symbol_map["XAUUSD"], "interval": "15min", "outputsize": 1, "timezone": "UTC"})
+                if not payload.get("values"):
+                    result = (False, "Twelve Data returned no XAUUSD candles.")
+                else:
+                    result = (True, None)
+            except MarketDataUnavailable as error:
+                result = (False, str(error))
+            self._availability_checked_at = now
+            self._availability_result = result
+            return result
 
     @staticmethod
     def _timestamp(value: object) -> int:

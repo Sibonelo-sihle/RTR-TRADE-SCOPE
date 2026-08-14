@@ -26,7 +26,9 @@ class AlertMonitor:
         triggered: list[str] = []
         for symbol, symbol_alerts in grouped.items():
             try:
-                candles = self.market_data.get_candles(symbol, "5m", 1)
+                # Match the chart history key so an active alert reuses the same
+                # centrally cached dataset instead of spending another provider credit.
+                candles = self.market_data.get_candles(symbol, "5m", 500)
                 if not candles:
                     raise MarketDataUnavailable("Provider returned no latest candle")
                 price = float(candles[-1].close)
