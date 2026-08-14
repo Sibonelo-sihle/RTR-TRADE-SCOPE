@@ -1,0 +1,378 @@
+//@version=6
+indicator("RTR Confluence Engine", shorttitle="RTR Confluence", overlay=true, max_boxes_count=40, max_lines_count=32, max_labels_count=80)
+
+// Retest & Confluence Assistant — manual analysis only; never places orders.
+// MTF pivots are confirmed `pivotStrength` source-timeframe bars after the swing.
+// request.security() uses lookahead_off and signals require confirmed chart bars.
+
+groupMtf = "MTF Structure"
+tf4h = input.timeframe("240", "Major structure timeframe", group=groupMtf)
+tf1h = input.timeframe("60", "Primary structure timeframe", group=groupMtf)
+tf15 = input.timeframe("15", "Intraday structure timeframe", group=groupMtf)
+tf5 = input.timeframe("5", "Execution structure timeframe", group=groupMtf)
+use4h = input.bool(true, "Show 4H structure", group=groupMtf)
+use1h = input.bool(true, "Show 1H structure", group=groupMtf)
+use15 = input.bool(true, "Show 15m structure", group=groupMtf)
+use5 = input.bool(true, "Show 5m structure", group=groupMtf)
+max4h = input.int(2, "4H zones per side", minval=1, maxval=4, group=groupMtf)
+max1h = input.int(2, "1H zones per side", minval=1, maxval=4, group=groupMtf)
+max15 = input.int(2, "15m zones per side", minval=1, maxval=4, group=groupMtf)
+max5 = input.int(1, "5m zones per side", minval=1, maxval=3, group=groupMtf)
+
+groupStructure = "Zone Qualification"
+pivotStrength = input.int(5, "Pivot strength", minval=2, maxval=20, group=groupStructure)
+departureAtr = input.float(1.25, "Minimum departure (ATR)", minval=0.5, maxval=4.0, step=0.25, group=groupStructure)
+zoneAtrLimit = input.float(0.75, "Maximum zone depth (ATR)", minval=0.2, maxval=2.0, step=0.05, group=groupStructure)
+invalidationAtr = input.float(0.15, "Invalidation buffer (ATR)", minval=0.0, maxval=1.0, step=0.05, group=groupStructure)
+overlapRatio = input.float(0.60, "Overlap suppression", minval=0.25, maxval=0.95, step=0.05, group=groupStructure)
+hideMitigated = input.bool(false, "Hide mitigated zones", group=groupStructure)
+showZones = input.bool(true, "Show supply/demand zones", group=groupStructure)
+
+groupLevels = "Support / Resistance"
+showLevels = input.bool(true, "Show significant S/R", group=groupLevels)
+touchLookback = input.int(80, "Reaction lookback (source bars)", minval=20, maxval=250, group=groupLevels)
+minimumTouches = input.int(2, "Minimum reactions", minval=2, maxval=5, group=groupLevels)
+toleranceAtr = input.float(0.25, "S/R proximity (ATR)", minval=0.05, maxval=1.5, step=0.05, group=groupLevels)
+
+groupSignal = "Signals"
+scoreThreshold = input.int(4, "Confluence threshold", minval=3, maxval=5, group=groupSignal)
+cooldownBars = input.int(12, "Signal cooldown (bars)", minval=1, maxval=500, group=groupSignal)
+showSignals = input.bool(true, "Show retest labels", group=groupSignal)
+
+groupRsi = "RSI"
+rsiLength = input.int(14, "RSI length", minval=2, group=groupRsi)
+rsiOversold = input.float(30.0, "Oversold", minval=1, maxval=49, group=groupRsi)
+rsiOverbought = input.float(70.0, "Overbought", minval=51, maxval=99, group=groupRsi)
+rsiBullLevel = input.float(45.0, "Bullish confirmation", minval=1, maxval=99, group=groupRsi)
+rsiBearLevel = input.float(55.0, "Bearish confirmation", minval=1, maxval=99, group=groupRsi)
+rsiRecoveryLookback = input.int(8, "Extreme recovery lookback", minval=1, maxval=50, group=groupRsi)
+
+groupTrend = "Trend / Visuals"
+useTrend = input.bool(true, "Use EMA trend confirmation", group=groupTrend)
+emaLength = input.int(200, "EMA length", minval=2, group=groupTrend)
+showEma = input.bool(false, "Show EMA", group=groupTrend)
+showPanel = input.bool(true, "Show confluence panel", group=groupTrend)
+wickFactor = input.float(1.25, "Rejection wick/body ratio", minval=0.25, maxval=5.0, step=0.25, group=groupTrend)
+
+f_touch_count(float level, float tolerance, int lookback) =>
+    int touches = 0
+    if not na(level)
+        for i = 0 to lookback
+            if low[i] <= level + tolerance and high[i] >= level - tolerance
+                touches += 1
+    touches
+
+// One evaluation returns all structure fields for one timeframe.
+f_structure() =>
+    sourceAtr = ta.atr(14)
+    ph = ta.pivothigh(high, pivotStrength, pivotStrength)
+    pl = ta.pivotlow(low, pivotStrength, pivotStrength)
+    pivotAtr = sourceAtr[pivotStrength]
+    rawSupplyBottom = math.max(open[pivotStrength], close[pivotStrength])
+    rawDemandTop = math.min(open[pivotStrength], close[pivotStrength])
+    supplyBottom = math.max(rawSupplyBottom, ph - pivotAtr * zoneAtrLimit)
+    demandTop = math.min(rawDemandTop, pl + pivotAtr * zoneAtrLimit)
+    supplyDeparture = not na(ph) and ph - ta.lowest(low, pivotStrength + 1) >= pivotAtr * departureAtr
+    demandDeparture = not na(pl) and ta.highest(high, pivotStrength + 1) - pl >= pivotAtr * departureAtr
+    resistance = supplyDeparture and f_touch_count(ph, pivotAtr * toleranceAtr, touchLookback) >= minimumTouches ? ph : na
+    support = demandDeparture and f_touch_count(pl, pivotAtr * toleranceAtr, touchLookback) >= minimumTouches ? pl : na
+    [time, supplyDeparture ? ph : na, supplyDeparture ? supplyBottom : na, demandDeparture ? demandTop : na, demandDeparture ? pl : na, resistance, support, sourceAtr]
+
+// Exactly four request.security() calls. No future HTF value is exposed.
+[t4, s4Top, s4Bottom, d4Top, d4Bottom, r4, p4, a4] = request.security(syminfo.tickerid, tf4h, f_structure(), gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_off)
+[t1, s1Top, s1Bottom, d1Top, d1Bottom, r1, p1, a1] = request.security(syminfo.tickerid, tf1h, f_structure(), gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_off)
+[t15, s15Top, s15Bottom, d15Top, d15Bottom, r15, p15, a15] = request.security(syminfo.tickerid, tf15, f_structure(), gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_off)
+[t5, s5Top, s5Bottom, d5Top, d5Bottom, r5, p5, a5] = request.security(syminfo.tickerid, tf5, f_structure(), gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_off)
+
+var zoneTops = array.new_float()
+var zoneBottoms = array.new_float()
+var zoneKinds = array.new_int()       // 1 demand, -1 supply
+var zoneTfs = array.new_int()         // 4 major, 3 primary, 2 intraday, 1 execution
+var zoneMitigated = array.new_bool()
+var zoneStructural = array.new_bool()
+var zoneBornBars = array.new_int()
+var zoneBoxes = array.new_box()
+var levelPrices = array.new_float()
+var levelKinds = array.new_int()
+var levelTfs = array.new_int()
+var levelLines = array.new_line()
+
+f_zone_color(int tfRank, int kind) =>
+    base = kind == 1 ? color.lime : color.red
+    transparency = tfRank == 4 ? 84 : tfRank == 3 ? 87 : tfRank == 2 ? 90 : 93
+    color.new(base, transparency)
+
+f_border_color(int tfRank, int kind) =>
+    base = kind == 1 ? color.lime : color.red
+    transparency = tfRank == 4 ? 28 : tfRank == 3 ? 42 : tfRank == 2 ? 58 : 72
+    color.new(base, transparency)
+
+f_tf_name(int tfRank) =>
+    tfRank == 4 ? "4H" : tfRank == 3 ? "1H" : tfRank == 2 ? "15M" : "5M"
+
+f_remove_zone(int index) =>
+    box.delete(array.remove(zoneBoxes, index))
+    array.remove(zoneTops, index)
+    array.remove(zoneBottoms, index)
+    array.remove(zoneKinds, index)
+    array.remove(zoneTfs, index)
+    array.remove(zoneMitigated, index)
+    array.remove(zoneStructural, index)
+    array.remove(zoneBornBars, index)
+
+f_add_zone(float top, float bottom, int kind, int tfRank, int maximum, bool structuralLevel) =>
+    bool substantiallyOverlaps = false
+    int sameCount = 0
+    int oldestIndex = -1
+    int i = 0
+    while i < array.size(zoneTops)
+        if array.get(zoneKinds, i) == kind and array.get(zoneTfs, i) == tfRank
+            sameCount += 1
+            if oldestIndex == -1
+                oldestIndex := i
+            oldTop = array.get(zoneTops, i)
+            oldBottom = array.get(zoneBottoms, i)
+            overlap = math.max(0.0, math.min(top, oldTop) - math.max(bottom, oldBottom))
+            smallerDepth = math.min(top - bottom, oldTop - oldBottom)
+            if smallerDepth > 0 and overlap / smallerDepth >= overlapRatio
+                substantiallyOverlaps := true
+        i += 1
+    if not substantiallyOverlaps
+        if sameCount >= maximum and oldestIndex >= 0
+            f_remove_zone(oldestIndex)
+        labelText = f_tf_name(tfRank) + (kind == 1 ? " DEMAND" : " SUPPLY")
+        zoneBox = box.new(bar_index, top, bar_index + 1, bottom, xloc=xloc.bar_index, extend=extend.right, border_color=showZones ? f_border_color(tfRank, kind) : color.new(color.white, 100), bgcolor=showZones ? f_zone_color(tfRank, kind) : color.new(color.white, 100), text=showZones ? labelText : "", text_color=f_border_color(tfRank, kind), text_size=size.tiny, text_halign=text.align_right)
+        array.push(zoneTops, top)
+        array.push(zoneBottoms, bottom)
+        array.push(zoneKinds, kind)
+        array.push(zoneTfs, tfRank)
+        array.push(zoneMitigated, false)
+        array.push(zoneStructural, structuralLevel)
+        array.push(zoneBornBars, bar_index)
+        array.push(zoneBoxes, zoneBox)
+
+f_level_overlaps_zone(float price, int kind, float tolerance) =>
+    bool overlaps = false
+    int i = 0
+    while i < array.size(zoneTops) and not overlaps
+        if array.get(zoneKinds, i) == kind
+            overlaps := price <= array.get(zoneTops, i) + tolerance and price >= array.get(zoneBottoms, i) - tolerance
+        i += 1
+    overlaps
+
+f_remove_level(int index) =>
+    line.delete(array.remove(levelLines, index))
+    array.remove(levelPrices, index)
+    array.remove(levelKinds, index)
+    array.remove(levelTfs, index)
+
+f_add_level(float price, int kind, int tfRank, float tolerance) =>
+    bool duplicate = na(price) or f_level_overlaps_zone(price, kind, tolerance)
+    int sameCount = 0
+    int oldestIndex = -1
+    int i = 0
+    while i < array.size(levelPrices)
+        if array.get(levelKinds, i) == kind and array.get(levelTfs, i) == tfRank
+            sameCount += 1
+            if oldestIndex == -1
+                oldestIndex := i
+            if math.abs(array.get(levelPrices, i) - price) <= tolerance
+                duplicate := true
+        i += 1
+    if not duplicate and showLevels
+        if sameCount >= 2 and oldestIndex >= 0
+            f_remove_level(oldestIndex)
+        levelColor = color.new(kind == 1 ? color.lime : color.red, tfRank >= 3 ? 48 : 68)
+        levelLine = line.new(bar_index, price, bar_index + 1, price, xloc=xloc.bar_index, extend=extend.right, color=levelColor, style=line.style_dashed, width=tfRank == 4 ? 2 : 1)
+        array.push(levelPrices, price)
+        array.push(levelKinds, kind)
+        array.push(levelTfs, tfRank)
+        array.push(levelLines, levelLine)
+
+chartSeconds = timeframe.in_seconds()
+f_tf_allowed(string structureTf, bool enabled) =>
+    enabled and timeframe.in_seconds(structureTf) >= chartSeconds
+
+allowed4 = f_tf_allowed(tf4h, use4h)
+allowed1 = f_tf_allowed(tf1h, use1h)
+allowed15 = f_tf_allowed(tf15, use15)
+allowed5 = f_tf_allowed(tf5, use5)
+
+var int lastS4 = na
+var int lastD4 = na
+var int lastS1 = na
+var int lastD1 = na
+var int lastS15 = na
+var int lastD15 = na
+var int lastS5 = na
+var int lastD5 = na
+
+if allowed4 and not na(s4Top) and (na(lastS4) or t4 != lastS4)
+    f_add_zone(s4Top, s4Bottom, -1, 4, max4h, not na(r4))
+    f_add_level(r4, -1, 4, a4 * toleranceAtr)
+    lastS4 := t4
+if allowed4 and not na(d4Top) and (na(lastD4) or t4 != lastD4)
+    f_add_zone(d4Top, d4Bottom, 1, 4, max4h, not na(p4))
+    f_add_level(p4, 1, 4, a4 * toleranceAtr)
+    lastD4 := t4
+if allowed1 and not na(s1Top) and (na(lastS1) or t1 != lastS1)
+    f_add_zone(s1Top, s1Bottom, -1, 3, max1h, not na(r1))
+    f_add_level(r1, -1, 3, a1 * toleranceAtr)
+    lastS1 := t1
+if allowed1 and not na(d1Top) and (na(lastD1) or t1 != lastD1)
+    f_add_zone(d1Top, d1Bottom, 1, 3, max1h, not na(p1))
+    f_add_level(p1, 1, 3, a1 * toleranceAtr)
+    lastD1 := t1
+if allowed15 and not na(s15Top) and (na(lastS15) or t15 != lastS15)
+    f_add_zone(s15Top, s15Bottom, -1, 2, max15, not na(r15))
+    f_add_level(r15, -1, 2, a15 * toleranceAtr)
+    lastS15 := t15
+if allowed15 and not na(d15Top) and (na(lastD15) or t15 != lastD15)
+    f_add_zone(d15Top, d15Bottom, 1, 2, max15, not na(p15))
+    f_add_level(p15, 1, 2, a15 * toleranceAtr)
+    lastD15 := t15
+if allowed5 and not na(s5Top) and (na(lastS5) or t5 != lastS5)
+    f_add_zone(s5Top, s5Bottom, -1, 1, max5, not na(r5))
+    f_add_level(r5, -1, 1, a5 * toleranceAtr)
+    lastS5 := t5
+if allowed5 and not na(d5Top) and (na(lastD5) or t5 != lastD5)
+    f_add_zone(d5Top, d5Bottom, 1, 1, max5, not na(p5))
+    f_add_level(p5, 1, 1, a5 * toleranceAtr)
+    lastD5 := t5
+
+atr = ta.atr(14)
+// Remove decisive breaks; mark first return as mitigation. Iterate backwards for safe removal.
+int zi = array.size(zoneTops) - 1
+while zi >= 0
+    top = array.get(zoneTops, zi)
+    bottom = array.get(zoneBottoms, zi)
+    kind = array.get(zoneKinds, zi)
+    invalid = kind == 1 ? close < bottom - atr * invalidationAtr : close > top + atr * invalidationAtr
+    touched = bar_index > array.get(zoneBornBars, zi) and low <= top and high >= bottom
+    if invalid
+        f_remove_zone(zi)
+    else if touched and not array.get(zoneMitigated, zi)
+        array.set(zoneMitigated, zi, true)
+        if hideMitigated
+            zoneBox = array.get(zoneBoxes, zi)
+            box.set_bgcolor(zoneBox, color.new(color.white, 100))
+            box.set_border_color(zoneBox, color.new(color.white, 100))
+            box.set_text_color(zoneBox, color.new(color.white, 100))
+    zi -= 1
+
+bool inDemand = false
+bool inSupply = false
+bool majorDemand = false
+bool majorSupply = false
+bool nestedDemand = false
+bool nestedSupply = false
+bool structuralDemand = false
+bool structuralSupply = false
+float demandTop = na
+float demandBottom = na
+float supplyTop = na
+float supplyBottom = na
+int demandMatches = 0
+int supplyMatches = 0
+int scan = array.size(zoneTops) - 1
+while scan >= 0
+    top = array.get(zoneTops, scan)
+    bottom = array.get(zoneBottoms, scan)
+    kind = array.get(zoneKinds, scan)
+    rank = array.get(zoneTfs, scan)
+    overlapsBar = low <= top and high >= bottom
+    if overlapsBar and kind == 1
+        inDemand := true
+        demandMatches += 1
+        majorDemand := majorDemand or rank >= 3
+        structuralDemand := structuralDemand or array.get(zoneStructural, scan)
+        if na(demandTop) or rank >= 3
+            demandTop := top
+            demandBottom := bottom
+    if overlapsBar and kind == -1
+        inSupply := true
+        supplyMatches += 1
+        majorSupply := majorSupply or rank >= 3
+        structuralSupply := structuralSupply or array.get(zoneStructural, scan)
+        if na(supplyTop) or rank >= 3
+            supplyTop := top
+            supplyBottom := bottom
+    scan -= 1
+nestedDemand := demandMatches >= 2
+nestedSupply := supplyMatches >= 2
+
+bool supportNear = majorDemand or nestedDemand or structuralDemand
+bool resistanceNear = majorSupply or nestedSupply or structuralSupply
+int li = array.size(levelPrices) - 1
+while li >= 0
+    level = array.get(levelPrices, li)
+    if array.get(levelKinds, li) == 1 and inDemand and math.abs(close - level) <= atr * toleranceAtr
+        supportNear := true
+    if array.get(levelKinds, li) == -1 and inSupply and math.abs(close - level) <= atr * toleranceAtr
+        resistanceNear := true
+    li -= 1
+
+body = math.max(math.abs(close - open), syminfo.mintick)
+lowerWick = math.min(open, close) - low
+upperWick = high - math.max(open, close)
+bullishEngulfing = close > open and close >= open[1] and open <= close[1]
+bearishEngulfing = close < open and close <= open[1] and open >= close[1]
+bullishRejection = inDemand and close > open and (lowerWick >= body * wickFactor or bullishEngulfing or close > high[1]) and close >= demandBottom
+bearishRejection = inSupply and close < open and (upperWick >= body * wickFactor or bearishEngulfing or close < low[1]) and close <= supplyTop
+
+rsi = ta.rsi(close, rsiLength)
+ema = ta.ema(close, emaLength)
+plot(showEma ? ema : na, "Trend EMA", color=color.new(color.yellow, 25), linewidth=1)
+recentlyOversold = ta.barssince(rsi <= rsiOversold) <= rsiRecoveryLookback
+recentlyOverbought = ta.barssince(rsi >= rsiOverbought) <= rsiRecoveryLookback
+rsiBullish = ta.crossover(rsi, rsiBullLevel) or (recentlyOversold and rsi > rsi[1]) or (rsi > rsiBullLevel and rsi > rsi[1])
+rsiBearish = ta.crossunder(rsi, rsiBearLevel) or (recentlyOverbought and rsi < rsi[1]) or (rsi < rsiBearLevel and rsi < rsi[1])
+bullTrend = not useTrend or close > ema
+bearTrend = not useTrend or close < ema
+
+// Location remains one point; HTF/nested alignment earns the structural-confluence point.
+buyScore = (inDemand ? 1 : 0) + (supportNear ? 1 : 0) + (rsiBullish ? 1 : 0) + (bullishRejection ? 1 : 0) + (bullTrend ? 1 : 0)
+sellScore = (inSupply ? 1 : 0) + (resistanceNear ? 1 : 0) + (rsiBearish ? 1 : 0) + (bearishRejection ? 1 : 0) + (bearTrend ? 1 : 0)
+var int lastBuyBar = na
+var int lastSellBar = na
+buySignal = barstate.isconfirmed and bullishRejection and buyScore >= scoreThreshold and (na(lastBuyBar) or bar_index - lastBuyBar >= cooldownBars)
+sellSignal = barstate.isconfirmed and bearishRejection and sellScore >= scoreThreshold and (na(lastSellBar) or bar_index - lastSellBar >= cooldownBars)
+
+if buySignal
+    lastBuyBar := bar_index
+    if showSignals
+        label.new(bar_index, low, "BUY RETEST " + str.tostring(buyScore) + "/5", style=label.style_label_up, color=color.new(color.lime, 8), textcolor=color.white, size=size.small)
+if sellSignal
+    lastSellBar := bar_index
+    if showSignals
+        label.new(bar_index, high, "SELL RETEST " + str.tostring(sellScore) + "/5", style=label.style_label_down, color=color.new(color.red, 8), textcolor=color.white, size=size.small)
+
+alertcondition(buySignal, "RTR BUY RETEST", "RTR BUY RETEST | {{ticker}} | Price {{close}}")
+alertcondition(sellSignal, "RTR SELL RETEST", "RTR SELL RETEST | {{ticker}} | Price {{close}}")
+alertcondition(buySignal and buyScore == 5, "High Confluence BUY (5/5)", "RTR HIGH CONFLUENCE BUY 5/5 | {{ticker}} | Price {{close}}")
+alertcondition(sellSignal and sellScore == 5, "High Confluence SELL (5/5)", "RTR HIGH CONFLUENCE SELL 5/5 | {{ticker}} | Price {{close}}")
+
+var table panel = table.new(position.top_right, 2, 7, border_width=1, frame_color=color.new(color.gray, 70), border_color=color.new(color.gray, 80))
+f_cell(int column, int row, string value, color textColor=color.white) =>
+    table.cell(panel, column, row, value, text_color=textColor, bgcolor=color.new(color.rgb(17, 24, 32), 8), text_size=size.small)
+if barstate.islast
+    if showPanel
+        bearishFocus = sellScore > buyScore
+        f_cell(0, 0, "RTR CONFLUENCE", color.rgb(76, 224, 177))
+        f_cell(1, 0, bearishFocus ? "SELL" : "BUY", bearishFocus ? color.red : color.lime)
+        f_cell(0, 1, bearishFocus ? "Supply" : "Demand")
+        f_cell(1, 1, (bearishFocus ? inSupply : inDemand) ? "YES" : "NO")
+        f_cell(0, 2, "HTF / S-R")
+        f_cell(1, 2, (bearishFocus ? resistanceNear : supportNear) ? "YES" : "NO")
+        f_cell(0, 3, "RSI")
+        f_cell(1, 3, (bearishFocus ? rsiBearish : rsiBullish) ? "YES" : "NO")
+        f_cell(0, 4, "Rejection")
+        f_cell(1, 4, (bearishFocus ? bearishRejection : bullishRejection) ? "YES" : "NO")
+        f_cell(0, 5, "Trend")
+        f_cell(1, 5, (bearishFocus ? bearTrend : bullTrend) ? "YES" : "NO")
+        focusScore = bearishFocus ? sellScore : buyScore
+        focusSignal = bearishFocus ? sellSignal : buySignal
+        f_cell(0, 6, "Score")
+        f_cell(1, 6, str.tostring(focusScore) + "/5" + (focusSignal ? " RETEST" : " WATCH"), focusSignal ? color.rgb(76, 224, 177) : color.white)
+    else
+        table.clear(panel, 0, 0, 1, 6)

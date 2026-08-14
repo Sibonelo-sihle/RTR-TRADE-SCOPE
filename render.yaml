@@ -13,3 +13,7 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      - key: MARKET_DATA_PROVIDER
+        value: twelvedata
+      - key: MARKET_DATA_API_KEY
+        sync: false

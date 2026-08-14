@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
@@ -43,3 +43,7 @@ class Alert(Timestamped, Base):
     symbol: Mapped[str] = mapped_column(String(30), index=True); target_price: Mapped[Decimal] = mapped_column(Numeric(20, 8))
     condition: Mapped[str] = mapped_column(String(10)); note: Mapped[str] = mapped_column(Text, default=""); status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
     triggered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    source_timeframe: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    source_signal: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    confluence_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

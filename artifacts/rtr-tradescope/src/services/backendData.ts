@@ -49,12 +49,16 @@ export const alertResource = {
   fromApi: (row: ApiAlert): PriceAlert => ({
     id: String(row.id), instrument: String(row.symbol), targetPrice: number(row.target_price),
     condition: row.condition === "BELOW" ? "Below" : "Above",
-    note: String(row.note ?? ""), status: row.status === "TRIGGERED" ? "Triggered" : "Active",
-    createdAt: new Date(String(row.created_at)).toLocaleString(),
+    note: String(row.note ?? ""), status: row.status === "TRIGGERED" ? "Triggered" : row.status === "DISABLED" ? "Disabled" : "Active",
+    createdAt: String(row.created_at), triggeredAt: row.triggered_at ? String(row.triggered_at) : undefined,
+    source: row.source ? String(row.source) : undefined, sourceTimeframe: row.source_timeframe ? String(row.source_timeframe) : undefined,
+    sourceSignal: row.source_signal ? String(row.source_signal) : undefined, confluenceScore: row.confluence_score == null ? undefined : number(row.confluence_score),
   }),
   toApi: (alert: PriceAlert) => ({
     symbol: alert.instrument, target_price: alert.targetPrice, condition: alert.condition.toUpperCase(),
-    note: alert.note, status: alert.status.toUpperCase(), triggered_at: null,
+    note: alert.note, status: alert.status.toUpperCase(), triggered_at: alert.triggeredAt || null,
+    source: alert.source || null, source_timeframe: alert.sourceTimeframe || null,
+    source_signal: alert.sourceSignal || null, confluence_score: alert.confluenceScore ?? null,
   }),
 };
 

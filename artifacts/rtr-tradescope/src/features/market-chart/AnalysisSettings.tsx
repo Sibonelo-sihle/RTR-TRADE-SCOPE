@@ -1,0 +1,21 @@
+import type { AnalysisSettings as Settings } from "@/features/market-chart/analysis/types";
+
+export function AnalysisSettings({ value, onChange }: { value: Settings; onChange: (value: Settings) => void }) {
+  const number = (key: keyof Settings, input: string) => onChange({ ...value, [key]: Number(input) });
+  return (
+    <details data-testid="rtr-analysis-settings" className="rounded-lg border border-[#30404c] bg-[#0c141b] px-3 py-2">
+      <summary className="cursor-pointer text-[9px] font-semibold text-[#81919b]">Signal settings</summary>
+      <div className="mt-3 grid min-w-[280px] gap-3 sm:grid-cols-3">
+        <label className="text-[8px] uppercase text-[#60727e]">RSI length<input data-testid="input-rsi-length" type="number" min="2" max="50" value={value.rsiLength} onChange={(event) => number("rsiLength", event.target.value)} className="mt-1 w-full rounded border border-[#2d3c47] bg-[#111b23] p-1.5 text-[10px] text-[#c7d3d5]" /></label>
+        <label className="text-[8px] uppercase text-[#60727e]">Oversold<input type="number" min="5" max="45" value={value.rsiOversold} onChange={(event) => number("rsiOversold", event.target.value)} className="mt-1 w-full rounded border border-[#2d3c47] bg-[#111b23] p-1.5 text-[10px] text-[#c7d3d5]" /></label>
+        <label className="text-[8px] uppercase text-[#60727e]">Overbought<input type="number" min="55" max="95" value={value.rsiOverbought} onChange={(event) => number("rsiOverbought", event.target.value)} className="mt-1 w-full rounded border border-[#2d3c47] bg-[#111b23] p-1.5 text-[10px] text-[#c7d3d5]" /></label>
+        <label className="text-[8px] uppercase text-[#60727e]">Threshold<select data-testid="select-confluence-threshold" value={value.threshold} onChange={(event) => onChange({ ...value, threshold: Number(event.target.value) as 3 | 4 | 5 })} className="mt-1 w-full rounded border border-[#2d3c47] bg-[#111b23] p-1.5 text-[10px]"><option value="3">3/5</option><option value="4">4/5</option><option value="5">5/5</option></select></label>
+        <label className="text-[8px] uppercase text-[#60727e]">EMA length<input type="number" min="5" max="200" value={value.emaLength} onChange={(event) => number("emaLength", event.target.value)} className="mt-1 w-full rounded border border-[#2d3c47] bg-[#111b23] p-1.5 text-[10px] text-[#c7d3d5]" /></label>
+        <label className="text-[8px] uppercase text-[#60727e]">Cooldown bars<input data-testid="input-signal-cooldown" type="number" min="1" max="200" value={value.cooldownBars} onChange={(event) => number("cooldownBars", event.target.value)} className="mt-1 w-full rounded border border-[#2d3c47] bg-[#111b23] p-1.5 text-[10px] text-[#c7d3d5]" /></label>
+        <label className="text-[8px] uppercase text-[#60727e]">Retest sensitivity<select value={value.retestSensitivity} onChange={(event) => onChange({ ...value, retestSensitivity: Number(event.target.value) as 1 | 2 | 3 })} className="mt-1 w-full rounded border border-[#2d3c47] bg-[#111b23] p-1.5 text-[10px]"><option value="1">Loose</option><option value="2">Balanced</option><option value="3">Strict</option></select></label>
+        <label className="text-[8px] uppercase text-[#60727e]">Rejection sensitivity<select value={value.rejectionSensitivity} onChange={(event) => onChange({ ...value, rejectionSensitivity: Number(event.target.value) as 1 | 2 | 3 })} className="mt-1 w-full rounded border border-[#2d3c47] bg-[#111b23] p-1.5 text-[10px]"><option value="1">Loose</option><option value="2">Balanced</option><option value="3">Strict</option></select></label>
+        <div className="space-y-2 text-[9px] text-[#8797a1]"><label className="flex gap-2"><input data-testid="toggle-trend-filter" type="checkbox" checked={value.trendEnabled} onChange={() => onChange({ ...value, trendEnabled: !value.trendEnabled })} />Trend confirmation</label><label className="flex gap-2"><input data-testid="toggle-signal-markers" type="checkbox" checked={value.showMarkers} onChange={() => onChange({ ...value, showMarkers: !value.showMarkers })} />Signal markers</label><label className="flex gap-2"><input data-testid="toggle-show-rsi" type="checkbox" checked={value.showRsi} onChange={() => onChange({ ...value, showRsi: !value.showRsi })} />Show RSI value</label></div>
+      </div>
+    </details>
+  );
+}

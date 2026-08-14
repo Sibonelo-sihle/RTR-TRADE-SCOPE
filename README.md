@@ -2,6 +2,27 @@
 
 RTR-TradeScope is a React/Vite trading journal backed by FastAPI, SQLAlchemy, and Supabase PostgreSQL.
 
+## Project structure
+
+```text
+Trade-Scope/
+├── artifacts/rtr-tradescope/   # React/Vite frontend
+│   └── src/
+│       ├── features/           # Auth and market-chart feature modules
+│       ├── hooks/              # Shared React hooks
+│       ├── services/           # API, persistence, and provider adapters
+│       ├── types/              # Frontend domain types
+│       └── utils/              # Trading calculations
+├── backend/                    # FastAPI application
+│   ├── alembic/versions/       # PostgreSQL migrations
+│   └── app/services/           # Market data and alert monitoring
+├── attached_assets/            # Project-owned visual assets
+├── lib/                        # Shared workspace packages
+└── scripts/                    # Workspace tooling
+```
+
+Generated output, dependencies, local environments, credentials, browser profiles, and verification artifacts are ignored and must not be committed.
+
 ## Beta data notice
 
 This test deployment is a **shared workspace**. Authentication and per-user isolation are not implemented yet, so both testers can see, edit, and delete the same records. Do not enter sensitive or production trading data. Supabase Auth and mandatory `user_id` scoping are the next phase.
@@ -43,9 +64,9 @@ Suggested slugs: `rtr-tradescope` for Vercel and `rtr-tradescope-api` for Render
 - Build: `pip install -r requirements.txt`
 - Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 - Health check: `/api/health`
-- Secret environment variables: `DATABASE_URL`, `DIRECT_URL`, `FRONTEND_URL`
+- Environment variables: `DATABASE_URL`, `DIRECT_URL`, `FRONTEND_URL`, `MARKET_DATA_PROVIDER`, `MARKET_DATA_API_KEY`
 
-The schema is already at Alembic revision `0001_initial`; deployment does not automatically run migrations.
+The schema is at Alembic revision `0002_alert_source_metadata`, following `0001_initial`. Deployment does not automatically run migrations.
 
 ### Vercel frontend
 
@@ -57,3 +78,11 @@ The schema is already at Alembic revision `0001_initial`; deployment does not au
 - Environment: `VITE_API_BASE_URL=https://YOUR-RENDER-BACKEND.onrender.com`
 
 Set backend `FRONTEND_URL` to the final Vercel origin. The frontend rewrite in `vercel.json` supports direct refreshes of all client-side routes.
+
+## Beta limitations
+
+- Beta Tester Access is local identity persistence, not authentication.
+- Testers share one Supabase-backed data workspace.
+- Chart screenshots are downloaded and attached locally; persistent screenshot storage is not configured.
+- Live alerts require the FastAPI process to remain available.
+- No trade execution or broker integration exists.

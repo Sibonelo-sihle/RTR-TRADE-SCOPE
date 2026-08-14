@@ -30,8 +30,13 @@ export interface PriceAlert {
   targetPrice: number;
   condition: "Above" | "Below";
   note: string;
-  status: "Active" | "Triggered";
+  status: "Active" | "Triggered" | "Disabled";
   createdAt: string;
+  triggeredAt?: string;
+  source?: string;
+  sourceTimeframe?: string;
+  sourceSignal?: string;
+  confluenceScore?: number;
 }
 export interface Strategy {
   id: string;

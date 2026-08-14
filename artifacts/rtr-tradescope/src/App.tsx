@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,6 +12,7 @@ import {
   Bell,
   BookOpen,
   CalendarDays,
+  CandlestickChart,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -27,6 +28,7 @@ import {
   Layers3,
   LayoutDashboard,
   LineChart,
+  LogOut,
   Menu,
   MoreHorizontal,
   Pencil,
@@ -80,6 +82,10 @@ import {
   tradeStorage,
 } from "@/services/storage";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { LoginPage } from "@/features/auth/LoginPage";
+import { MarketChartPage } from "@/features/market-chart/MarketChartPage";
+import { tradePrefill } from "@/features/market-chart/services/tradePrefill";
 import { alertResource, strategyResource, tradeResource, useBackendCollection } from "@/services/backendData";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -318,6 +324,12 @@ const navItems = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/journal", label: "Trade journal", icon: BookOpen },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  {
+    href: "/tradingview",
+    label: "TradingView",
+    icon: CandlestickChart,
+  },
+  { href: "/market-chart", label: "RTR Market Chart", icon: LineChart },
   { href: "/alerts", label: "Alerts", icon: Bell },
 ];
 const workspaceItems = [
@@ -335,6 +347,14 @@ function pct(value: number) {
 function AppShell({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { tester, signOut } = useAuth();
+  const identity = tester?.name || "Trader";
+  const initials = identity
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
   const current = [...navItems, ...workspaceItems].find(
     (item) => item.href === location,
   );
@@ -404,15 +424,23 @@ function AppShell({ children }: { children: ReactNode }) {
         </div>
         <div className="mt-4 flex items-center gap-2.5 border-t border-[#202b38] px-2 pt-4">
           <div className="grid h-8 w-8 place-items-center rounded-full bg-[#253a45] text-[11px] font-bold text-[#8de4cb]">
-            JL
+            {initials}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[12px] font-semibold">Beta testers</div>
+            <div className="truncate text-[12px] font-semibold">{identity}</div>
             <div className="truncate text-[10px] text-[#72818d]">
-              Shared testing workspace
+              {tester?.email}
             </div>
           </div>
-          <MoreHorizontal size={16} className="text-[#71808b]" />
+          <button
+            data-testid="button-sign-out"
+            title="Sign Out"
+            aria-label="Sign Out"
+            onClick={() => void signOut()}
+            className="rounded-md p-1.5 text-[#71808b] hover:bg-[#263642] hover:text-[#dce7e8]"
+          >
+            <LogOut size={15} />
+          </button>
         </div>
       </aside>
       {mobileOpen && (
@@ -586,6 +614,7 @@ function Stat({
 }
 
 function Overview({ trades }: { trades: Trade[] }) {
+  const { tester } = useAuth();
   const [metric, setMetric] = useState<"pnl" | "rMultiple">("pnl");
   const closed = trades.filter((t) => t.status === "Closed");
   const stats = summary(trades);
@@ -598,11 +627,13 @@ function Overview({ trades }: { trades: Trade[] }) {
       value: (pnl += trade.pnl),
       benchmark: (r += trade.rMultiple),
     }));
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   return (
     <>
       <PageTitle
         eyebrow="Friday, February 21, 2025"
-        title="Good evening, Jordan."
+        title={`${greeting}${tester?.name ? `, ${tester.name}` : ""}.`}
         subtitle="A clear read on your decisions, before the next one."
         action={
           <Link
@@ -1303,11 +1334,13 @@ function TradeDetail({
 
 function TradeForm({
   initial,
+  prefilled,
   onClose,
   onSave,
   onAdd,
 }: {
   initial?: Trade;
+  prefilled?: boolean;
   onClose?: () => void;
   onSave?: (t: Trade) => void;
   onAdd?: (t: Trade) => void | Promise<void>;
@@ -1335,6 +1368,7 @@ function TradeForm({
   );
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [screenshotName, setScreenshotName] = useState("");
   const update = (key: keyof Trade, value: string) =>
     setForm((f) => ({
       ...f,
@@ -1379,7 +1413,7 @@ function TradeForm({
         <div className="flex items-center justify-between border-b border-[#273441] px-5 py-4">
           <div>
             <div className="text-[15px] font-bold text-[#e6efef]">
-              {initial ? "Edit trade" : "Log a trade"}
+              {initial && !prefilled ? "Edit trade" : "Log a trade"}
             </div>
             <div className="mt-1 text-[10px] text-[#71818d]">
               Capture the decision while it is still fresh.
@@ -1506,6 +1540,7 @@ function TradeForm({
                   "London Sweep",
                   "VWAP Reclaim",
                   "Liquidity Fade",
+                  "RTR Retest",
                 ].map((x) => (
                   <option key={x}>{x}</option>
                 ))}
@@ -1552,14 +1587,20 @@ function TradeForm({
             />
           </Field>
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-[#334452] p-3 text-[11px] text-[#83929c] hover:border-[#4ce0b1]">
-            <Download size={15} /> Attach chart screenshot
+            <Download size={15} /> {screenshotName || "Attach chart screenshot"}
             <input
               data-testid="input-trade-screenshot"
               type="file"
               accept="image/*"
+              onChange={(event) => setScreenshotName(event.target.files?.[0]?.name ?? "")}
               className="hidden"
             />
           </label>
+          {screenshotName && (
+            <p className="-mt-3 text-[9px] text-[#70818c]">
+              Image selected locally. Persistent screenshot storage is not configured yet.
+            </p>
+          )}
         </div>
         <div className="flex justify-end gap-2 border-t border-[#273441] px-5 py-4">
           <button
@@ -1575,7 +1616,7 @@ function TradeForm({
             disabled={!form.symbol || saving}
             className="rounded-lg bg-[#4ce0b1] px-5 py-2.5 text-[11px] font-bold text-[#0d1b1a] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {saving ? "Saving…" : initial ? "Save changes" : "Save trade"}
+            {saving ? "Saving…" : initial && !prefilled ? "Save changes" : "Save trade"}
           </button>
         </div>
       </div>
@@ -1622,6 +1663,15 @@ function AddTrade({
   createTrade: (trade: Trade) => Promise<Trade>;
 }) {
   const [, setLocation] = useLocation();
+  const [prefill] = useState(() => tradePrefill.read());
+  useEffect(() => { tradePrefill.clear(); }, []);
+  const initial = prefill ? {
+    id: crypto.randomUUID(), symbol: prefill.symbol, direction: prefill.direction,
+    entry: 0, stopLoss: 0, takeProfit: 0, exit: 0, positionSize: 0,
+    date: prefill.date, session: prefill.session, strategy: prefill.strategy,
+    status: "Planned" as const, result: "Pending" as const, notes: prefill.notes,
+    pnl: 0, rMultiple: 0, rr: 0,
+  } : undefined;
   return (
     <>
       <PageTitle
@@ -1630,6 +1680,8 @@ function AddTrade({
         subtitle="A complete record makes the next review more useful."
       />
       <TradeForm
+        initial={initial}
+        prefilled={Boolean(prefill)}
         onAdd={async (t) => {
           const saved = await createTrade(t);
           toast({ title: "Trade saved", description: `${saved.symbol} is now in your journal.` });
@@ -1846,6 +1898,134 @@ function AnalyticsTip({
   ) : null;
 }
 
+function TradingViewPage({ createAlert }: { createAlert: (alert: Alert) => Promise<Alert> }) {
+  const container = useRef<HTMLDivElement>(null);
+  const [, setLocation] = useLocation();
+  const [showAlert, setShowAlert] = useState(false);
+  const [savingAlert, setSavingAlert] = useState(false);
+  const [alertError, setAlertError] = useState("");
+  const [alertSaved, setAlertSaved] = useState(false);
+  const [alertForm, setAlertForm] = useState({
+    instrument: "XAUUSD",
+    condition: "Above" as "Above" | "Below",
+    targetPrice: "",
+    note: "",
+  });
+
+  const saveAlert = async () => {
+    const targetPrice = Number(alertForm.targetPrice);
+    if (!alertForm.instrument.trim() || !Number.isFinite(targetPrice) || targetPrice <= 0) {
+      setAlertError("Enter an instrument and a valid target price.");
+      return;
+    }
+    setSavingAlert(true);
+    setAlertError("");
+    try {
+      const saved = await createAlert({
+        id: crypto.randomUUID(),
+        instrument: alertForm.instrument.trim().toUpperCase(),
+        targetPrice,
+        condition: alertForm.condition,
+        note: alertForm.note.trim(),
+        status: "Active",
+        createdAt: new Date().toLocaleString(),
+      });
+      setShowAlert(false);
+      setAlertSaved(true);
+      setAlertForm({ instrument: "XAUUSD", condition: "Above", targetPrice: "", note: "" });
+      toast({ title: "Alert created", description: `${saved.instrument} ${saved.condition.toLowerCase()} ${saved.targetPrice.toLocaleString()} is now active.` });
+    } catch (error) {
+      setAlertError(error instanceof Error ? error.message : "Unable to create alert.");
+    } finally {
+      setSavingAlert(false);
+    }
+  };
+
+  useEffect(() => {
+    const mountNode = container.current;
+    if (!mountNode) return;
+    mountNode.replaceChildren();
+    const widget = document.createElement("div");
+    widget.className = "tradingview-widget-container__widget";
+    const script = document.createElement("script");
+    script.src =
+      "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    script.async = true;
+    script.type = "text/javascript";
+    script.textContent = JSON.stringify({
+      autosize: true,
+      symbol: "OANDA:XAUUSD",
+      interval: "15",
+      timezone: "Etc/UTC",
+      theme: "dark",
+      backgroundColor: "#0d1118",
+      gridColor: "rgba(71, 85, 105, 0.18)",
+      style: "1",
+      locale: "en",
+      allow_symbol_change: true,
+      hide_side_toolbar: false,
+      hide_top_toolbar: false,
+      hide_legend: false,
+      hide_volume: false,
+      save_image: true,
+      calendar: false,
+      support_host: "https://www.tradingview.com",
+    });
+    mountNode.append(widget, script);
+    return () => mountNode.replaceChildren();
+  }, []);
+
+  return (
+    <>
+      <PageTitle
+        eyebrow="Market Analysis"
+        title="TradingView"
+        subtitle="Explore live market structure without leaving your RTR workspace."
+        action={
+          <div className="flex items-center gap-2">
+            {alertSaved && (
+              <button data-testid="button-view-alerts" onClick={() => setLocation("/alerts")} className="rounded-lg border border-[#334652] px-3 py-2 text-[10px] font-semibold text-[#8dddc5] hover:bg-[#172a2a]">View Alerts</button>
+            )}
+            <button data-testid="button-create-tradingview-alert" onClick={() => { setAlertError(""); setShowAlert(true); }} className="inline-flex items-center gap-2 rounded-lg bg-[#4ce0b1] px-4 py-2.5 text-[12px] font-bold text-[#0d1b1a]"><Plus size={15} /> Create Alert</button>
+          </div>
+        }
+      />
+      <div
+        className="min-h-[520px] w-full overflow-hidden rounded-xl border border-[#273541] bg-[#0d1118] shadow-[0_18px_50px_rgba(0,0,0,.22)]"
+        style={{ height: "clamp(520px, 72vh, 760px)" }}
+      >
+        <div
+          ref={container}
+          data-testid="tradingview-chart"
+          className="tradingview-widget-container h-full w-full max-w-full"
+        />
+      </div>
+      <p className="mt-3 text-[10px] leading-relaxed text-[#647580]">
+        Market data and chart tools are supplied by TradingView. The embedded
+        widget does not send RTR journal data or execute trades.
+      </p>
+      <p className="mt-1 text-[10px] text-[#78908f]">
+        Save your analysis using TradingView's image control, then attach the image when logging your trade.
+      </p>
+      {showAlert && (
+        <Modal title="Create RTR alert" onClose={() => setShowAlert(false)}>
+          <div className="space-y-4">
+            {alertError && <div role="alert" className="rounded-lg border border-[#743f45] bg-[#351f26] p-3 text-[11px] text-[#f0a29a]">{alertError}</div>}
+            <Field label="Instrument"><input data-testid="input-tradingview-alert-instrument" value={alertForm.instrument} onChange={(event) => setAlertForm({ ...alertForm, instrument: event.target.value })} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Condition"><select data-testid="select-tradingview-alert-condition" value={alertForm.condition} onChange={(event) => setAlertForm({ ...alertForm, condition: event.target.value as "Above" | "Below" })}><option>Above</option><option>Below</option></select></Field>
+              <Field label="Target price"><input data-testid="input-tradingview-alert-price" type="number" step="any" value={alertForm.targetPrice} onChange={(event) => setAlertForm({ ...alertForm, targetPrice: event.target.value })} /></Field>
+            </div>
+            <Field label="Note"><textarea data-testid="textarea-tradingview-alert-note" rows={3} value={alertForm.note} onChange={(event) => setAlertForm({ ...alertForm, note: event.target.value })} placeholder="What will you review at this level?" /></Field>
+            <p className="text-[9px] leading-relaxed text-[#6f818c]">Stored alert definition only. RTR does not monitor live prices or trigger trades.</p>
+          </div>
+          <ModalActions cancel={() => setShowAlert(false)} submit={() => void saveAlert()} label={savingAlert ? "Saving…" : "Create alert"} testId="button-save-tradingview-alert" />
+        </Modal>
+      )}
+    </>
+  );
+}
+
 function Alerts({
   alerts,
   setAlerts,
@@ -1913,7 +2093,7 @@ function Alerts({
               Your alerts
             </div>
             <div className="mt-1 text-[11px] text-[#71818d]">
-              Local only · no market connection
+              Stored definitions · backend price monitoring
             </div>
           </div>
           <div className="divide-y divide-[#202b37]">
@@ -1940,13 +2120,15 @@ function Alerts({
                   <div className="mt-1 text-[10px] text-[#758590]">
                     {a.note || "No note added"}
                   </div>
+                  {a.source && <div className="mt-1 font-mono text-[8px] uppercase tracking-wider text-[#4fae94]">{a.source.replaceAll("_", " ")} {a.sourceTimeframe ? `· ${a.sourceTimeframe}` : ""} {a.confluenceScore != null ? `· ${a.confluenceScore}/5` : ""}</div>}
+                  {a.triggeredAt && <div className="mt-1 text-[9px] text-[#d2a45a]">Triggered {new Date(a.triggeredAt).toLocaleString()}</div>}
                 </div>
                 <div className="text-right">
                   <div className="font-mono text-[13px] text-[#cbd8dc]">
                     {a.condition} {a.targetPrice.toLocaleString()}
                   </div>
                   <div className="mt-1 text-[10px] text-[#687885]">
-                    {a.createdAt}
+                    {a.createdAt === "Just now" ? a.createdAt : new Date(a.createdAt).toLocaleString()}
                   </div>
                 </div>
                 <button
@@ -1957,8 +2139,8 @@ function Alerts({
                         x.id === a.id
                           ? {
                               ...x,
-                              status:
-                                x.status === "Active" ? "Triggered" : "Active",
+                              status: x.status === "Active" ? "Disabled" : "Active",
+                              triggeredAt: x.status === "Triggered" ? undefined : x.triggeredAt,
                             }
                           : x,
                       ),
@@ -1966,7 +2148,7 @@ function Alerts({
                   }
                   className={`rounded-md border px-2.5 py-2 text-[10px] ${a.status === "Active" ? "border-[#35424c] text-[#85949e]" : "border-[#2d6155] text-[#71dabc]"}`}
                 >
-                  {a.status === "Active" ? "Mark triggered" : "Reactivate"}
+                  {a.status === "Active" ? "Disable" : "Reactivate"}
                 </button>
                 <button
                   data-testid={`button-delete-alert-${a.id}`}
@@ -2699,7 +2881,7 @@ function NotFound() {
   );
 }
 
-function Router() {
+function WorkspaceRouter() {
   const [location] = useLocation();
   const localTrades = usePersistentState(
     () => tradeStorage.get(initialTrades),
@@ -2714,7 +2896,7 @@ function Router() {
     strategyStorage.save,
   );
   const [trades, setTradesState, createTrade] = useBackendCollection(tradeResource, localTrades);
-  const [alerts, setAlerts] = useBackendCollection(alertResource, localAlerts);
+  const [alerts, setAlerts, createAlert] = useBackendCollection(alertResource, localAlerts);
   const [strategies, setStrategies] = useBackendCollection(strategyResource, localStrategies);
   const [settings, setSettings] = usePersistentState(
     settingsStorage.get,
@@ -2728,6 +2910,8 @@ function Router() {
     page = <Journal trades={trades} setTrades={setTradesState} />;
   else if (location === "/add-trade") page = <AddTrade createTrade={createTrade} />;
   else if (location === "/analytics") page = <Analytics trades={trades} />;
+  else if (location === "/tradingview") page = <TradingViewPage createAlert={createAlert} />;
+  else if (location === "/market-chart") page = <MarketChartPage createAlert={createAlert} />;
   else if (location === "/alerts")
     page = <Alerts alerts={alerts} setAlerts={setAlerts} />;
   else if (location === "/strategies")
@@ -2765,13 +2949,36 @@ function Router() {
   return <AppShell>{page}</AppShell>;
 }
 
+function AuthenticatedRouter() {
+  const [location, setLocation] = useLocation();
+  const { tester, loading } = useAuth();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!tester && location !== "/login") setLocation("/login", { replace: true });
+    if (tester && location === "/login") setLocation("/", { replace: true });
+  }, [loading, location, tester, setLocation]);
+
+  if (loading) {
+    return (
+      <div className="grid min-h-[100dvh] place-items-center bg-[#0a1016] text-center text-[#8ba09f]">
+        <div><img src="/assets/rtr-logo.jpeg" alt="Rags to Riches FX" className="mx-auto h-16 w-16 rounded-full bg-white object-contain" /><div className="mt-4 text-[11px] uppercase tracking-[.18em]">Restoring beta access…</div></div>
+      </div>
+    );
+  }
+  if (!tester) return <LoginPage />;
+  return <WorkspaceRouter />;
+}
+
 const queryClient = new QueryClient();
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
+          <AuthProvider>
+            <AuthenticatedRouter />
+          </AuthProvider>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

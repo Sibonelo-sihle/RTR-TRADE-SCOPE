@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     database_url: str
     direct_url: Optional[str] = None
     frontend_url: str = "http://localhost:5173"
+    market_data_provider: str = "twelvedata"
+    market_data_api_key: Optional[str] = None
+    alert_monitor_enabled: bool = True
+    alert_poll_seconds: int = 120
     model_config = SettingsConfigDict(env_file=BACKEND_DIR / ".env", extra="ignore")
 
     @property

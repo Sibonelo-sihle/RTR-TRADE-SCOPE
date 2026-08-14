@@ -24,4 +24,5 @@ class StrategyIn(BaseModel):
 class StrategyOut(StrategyIn, ORMModel): id: UUID; created_at: datetime; updated_at: datetime
 class AlertIn(BaseModel):
     symbol: str = Field(min_length=1, max_length=30); target_price: Decimal = Field(gt=0); condition: Literal["ABOVE", "BELOW"]; note: str = ""; status: Literal["ACTIVE", "TRIGGERED", "DISABLED"] = "ACTIVE"; triggered_at: datetime | None = None
+    source: str | None = Field(None, max_length=50); source_timeframe: str | None = Field(None, max_length=10); source_signal: str | None = Field(None, max_length=50); confluence_score: int | None = Field(None, ge=0, le=5)
 class AlertOut(AlertIn, ORMModel): id: UUID; created_at: datetime; updated_at: datetime
