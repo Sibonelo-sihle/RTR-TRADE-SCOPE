@@ -11,9 +11,9 @@ class MarketDataService:
     """Provider-neutral candle access with timeframe-aware request coalescing."""
 
     REFRESH_SECONDS = {
-        "5m": 600.0,
+        "5m": 1800.0,
         "15m": 1800.0,
-        "1H": 3600.0,
+        "1H": 5400.0,
         "4H": 14400.0,
     }
     BOUNDARY_DELAY_SECONDS = 15.0

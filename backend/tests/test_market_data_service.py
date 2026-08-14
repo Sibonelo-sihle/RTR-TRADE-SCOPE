@@ -65,13 +65,13 @@ class MarketDataServiceTests(unittest.TestCase):
 
     def test_timeframes_have_boundary_aware_refresh_cadence(self):
         self.assertEqual(MarketDataService.REFRESH_SECONDS, {
-            "5m": 600.0,
+            "5m": 1800.0,
             "15m": 1800.0,
-            "1H": 3600.0,
+            "1H": 5400.0,
             "4H": 14400.0,
         })
-        self.assertEqual(MarketDataService.seconds_until_next_refresh("5m", 614), 1)
-        self.assertEqual(MarketDataService.seconds_until_next_refresh("5m", 615), 600)
+        self.assertEqual(MarketDataService.seconds_until_next_refresh("5m", 1814), 1)
+        self.assertEqual(MarketDataService.seconds_until_next_refresh("5m", 1815), 1800)
 
 
 if __name__ == "__main__":
