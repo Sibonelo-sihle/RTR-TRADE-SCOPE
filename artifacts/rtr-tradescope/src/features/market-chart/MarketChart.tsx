@@ -95,10 +95,22 @@ export const MarketChart = forwardRef<MarketChartHandle, { candles: MarketCandle
       ? `TP1 · ${target.toFixed(activePlan.symbol === "XAUUSD" ? 2 : 5)}`
       : "TP1 · UNAVAILABLE (<1.5R)"
     : "TP1 · WAITING FOR CONFIRMED ENTRY";
+  const zoom = (factor: number) => {
+    const timeScale = chartApi.current?.timeScale();
+    const range = timeScale?.getVisibleLogicalRange();
+    if (!timeScale || !range) return;
+    const center = (range.from + range.to) / 2;
+    const halfWidth = ((range.to - range.from) * factor) / 2;
+    timeScale.setVisibleLogicalRange({ from: center - halfWidth, to: center + halfWidth });
+  };
 
   return (
     <div className="relative h-full min-h-[520px] w-full">
       <div ref={container} data-testid="rtr-market-chart-canvas" className="h-full min-h-[520px] w-full" />
+      <div className="absolute left-3 top-3 z-10 flex overflow-hidden rounded-md border border-[#30404c] bg-[#101a22e6] shadow-lg">
+        <button type="button" onClick={() => zoom(1.35)} aria-label="Zoom chart out" title="Zoom out" className="grid h-8 w-9 place-items-center border-r border-[#30404c] text-lg leading-none text-[#9cabb2] transition-colors hover:bg-[#1d2d36] hover:text-[#eef5f4]">−</button>
+        <button type="button" onClick={() => zoom(0.75)} aria-label="Zoom chart in" title="Zoom in" className="grid h-8 w-9 place-items-center text-lg leading-none text-[#9cabb2] transition-colors hover:bg-[#1d2d36] hover:text-[#eef5f4]">+</button>
+      </div>
       <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-md border border-[#31584f] bg-[#10201ed9] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[.12em] text-[#65cfae] shadow-lg">
         {targetLabel}
       </div>
