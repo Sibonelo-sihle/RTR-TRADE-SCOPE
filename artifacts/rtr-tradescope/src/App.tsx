@@ -618,6 +618,12 @@ function Stat({
 
 function Overview({ trades }: { trades: Trade[] }) {
   const { tester } = useAuth();
+  const today = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date());
   const [metric, setMetric] = useState<"pnl" | "rMultiple">("pnl");
   const closed = trades.filter((t) => t.status === "Closed");
   const stats = summary(trades);
@@ -635,7 +641,7 @@ function Overview({ trades }: { trades: Trade[] }) {
   return (
     <>
       <PageTitle
-        eyebrow="Friday, February 21, 2025"
+        eyebrow={today}
         title={`${greeting}${tester?.name ? `, ${tester.name}` : ""}.`}
         subtitle="A clear read on your decisions, before the next one."
         action={
