@@ -76,9 +76,32 @@ export interface RTRSignal {
   score: number;
   zoneTimeframe: MarketTimeframe;
   zoneType: ZoneKind;
+  zoneId: string;
+  zoneLower: number;
+  zoneUpper: number;
+  signalKind?: "SWING" | "EXECUTION";
   rsi: number;
   reason: string[];
   missing: string[];
+}
+
+export type SwingStateStatus = "ACTIVE" | "CLOSED" | "INVALIDATED";
+export interface PersistedSwingState {
+  id: string;
+  symbol: string;
+  direction: "BUY" | "SELL";
+  htf_zone_id: string;
+  htf_timeframe: "4H" | "1H";
+  signal_timestamp: number;
+  entry_timeframe: "15m" | "5m";
+  score: number;
+  zone_type: ZoneKind;
+  zone_lower: number;
+  zone_upper: number;
+  status: SwingStateStatus;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
 }
 
 export interface SignalAnalysis {

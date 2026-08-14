@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import SessionLocal, engine, get_db
 from .market_schemas import CandleOut, MarketDataStatusOut
-from .models import Alert, Strategy, Trade
-from .schemas import AlertIn, AlertOut, StrategyIn, StrategyOut, TradeIn, TradeOut
+from .models import Alert, Strategy, SwingState, Trade
+from .schemas import AlertIn, AlertOut, StrategyIn, StrategyOut, SwingStateIn, SwingStateOut, TradeIn, TradeOut
 from .services.market_data import MT5MarketDataProvider, MarketDataService, MarketDataUnavailable, TwelveDataMarketDataProvider
 from .services.alert_monitor import AlertMonitor
 
@@ -135,6 +135,31 @@ crud_routes("strategies", Strategy, StrategyIn, StrategyOut)
 def check_alerts(db: Session = Depends(get_db)):
     return alert_monitor.check(db)
 crud_routes("alerts", Alert, AlertIn, AlertOut)
+
+@app.get("/api/swings", response_model=list[SwingStateOut])
+def swings(symbol: str | None = None, db: Session = Depends(get_db)):
+    query = select(SwingState).order_by(SwingState.created_at.desc())
+    if symbol: query = query.where(SwingState.symbol == symbol.strip().upper())
+    return db.scalars(query).all()
+
+@app.post("/api/swings", response_model=SwingStateOut)
+def create_swing(data: SwingStateIn, db: Session = Depends(get_db)):
+    existing = db.scalar(select(SwingState).where(SwingState.symbol == data.symbol.strip().upper(), SwingState.direction == data.direction, SwingState.htf_zone_id == data.htf_zone_id))
+    if existing: return existing
+    values = data.model_dump(); values["symbol"] = data.symbol.strip().upper()
+    return save(db, SwingState(**values, status="ACTIVE"))
+
+@app.put("/api/swings/{item_id}/close", response_model=SwingStateOut)
+def close_swing(item_id: str, db: Session = Depends(get_db)):
+    item = one(db, SwingState, item_id)
+    item.status = "CLOSED"; item.closed_at = datetime.now().astimezone()
+    return save(db, item)
+
+@app.put("/api/swings/{item_id}/invalidate", response_model=SwingStateOut)
+def invalidate_swing(item_id: str, db: Session = Depends(get_db)):
+    item = one(db, SwingState, item_id)
+    if item.status == "ACTIVE": item.status = "INVALIDATED"; item.closed_at = datetime.now().astimezone()
+    return save(db, item)
 
 @app.get("/api/analytics/summary")
 def analytics_summary(db: Session = Depends(get_db)):

@@ -26,3 +26,10 @@ class AlertIn(BaseModel):
     symbol: str = Field(min_length=1, max_length=30); target_price: Decimal = Field(gt=0); condition: Literal["ABOVE", "BELOW"]; note: str = ""; status: Literal["ACTIVE", "TRIGGERED", "DISABLED"] = "ACTIVE"; triggered_at: datetime | None = None
     source: str | None = Field(None, max_length=50); source_timeframe: str | None = Field(None, max_length=10); source_signal: str | None = Field(None, max_length=50); confluence_score: int | None = Field(None, ge=0, le=5)
 class AlertOut(AlertIn, ORMModel): id: UUID; created_at: datetime; updated_at: datetime
+class SwingStateIn(BaseModel):
+    symbol: str = Field(min_length=1, max_length=30); direction: Literal["BUY", "SELL"]
+    htf_zone_id: str = Field(min_length=1, max_length=100); htf_timeframe: Literal["4H", "1H"]
+    signal_timestamp: int = Field(gt=0); entry_timeframe: Literal["15m", "5m"]; score: int = Field(ge=4, le=5)
+    zone_type: Literal["Supply", "Demand"]; zone_lower: Decimal; zone_upper: Decimal
+class SwingStateOut(SwingStateIn, ORMModel):
+    id: UUID; status: Literal["ACTIVE", "CLOSED", "INVALIDATED"]; closed_at: datetime | None = None; created_at: datetime; updated_at: datetime

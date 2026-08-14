@@ -8,7 +8,7 @@ export function SelectedSetup({ selected, signals, onSelect }: { selected: RTRSi
   return <section className="rounded-xl border border-[#263541] bg-[#121b23] p-3" data-testid="selected-setup-card">
     <div className="font-mono text-[9px] uppercase tracking-[.18em] text-[#4ce0b1]">Selected setup</div>
     {selected ? <div className="mt-2">
-      <div className={`text-[13px] font-bold ${selected.direction === "BUY" ? "text-[#63dbb6]" : "text-[#ec8178]"}`}>RTR {selected.direction} RETEST</div>
+      <div className={`text-[13px] font-bold ${selected.direction === "BUY" ? "text-[#63dbb6]" : "text-[#ec8178]"}`}>{selected.signalKind === "SWING" ? `RTR SWING ${selected.direction}` : `RTR ${selected.direction} RETEST`}</div>
       <div className="mt-1 text-[10px] text-[#84959e]">{selected.symbol} · {selected.timeframe} · Score {selected.score}/5</div>
       <div className="mt-1 text-[9px] text-[#687a84]">{new Date(selected.timestamp * 1000).toLocaleString()}</div>
       <div className="mt-2 space-y-1 text-[10px] text-[#aab8bd]">

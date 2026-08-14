@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
@@ -47,3 +47,19 @@ class Alert(Timestamped, Base):
     source_timeframe: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     source_signal: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     confluence_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+class SwingState(Timestamped, Base):
+    __tablename__ = "swing_states"
+    __table_args__ = (UniqueConstraint("symbol", "direction", "htf_zone_id", name="uq_swing_setup"),)
+    symbol: Mapped[str] = mapped_column(String(30), index=True)
+    direction: Mapped[str] = mapped_column(String(4))
+    htf_zone_id: Mapped[str] = mapped_column(String(100))
+    htf_timeframe: Mapped[str] = mapped_column(String(10))
+    signal_timestamp: Mapped[int] = mapped_column(BigInteger)
+    entry_timeframe: Mapped[str] = mapped_column(String(10))
+    score: Mapped[int] = mapped_column(Integer)
+    zone_type: Mapped[str] = mapped_column(String(10))
+    zone_lower: Mapped[Decimal] = mapped_column(Numeric(20, 8))
+    zone_upper: Mapped[Decimal] = mapped_column(Numeric(20, 8))
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
