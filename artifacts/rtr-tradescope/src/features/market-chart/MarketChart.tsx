@@ -77,13 +77,16 @@ export const MarketChart = forwardRef<MarketChartHandle, { candles: MarketCandle
     for (const line of planLines.current) series.removePriceLine(line);
     planLines.current = [];
     if (!activePlan?.entry_price || !activePlan.stop) return;
+    const tp1 = activePlan.tp1 == null ? null : Number(activePlan.tp1);
+    const tp2 = activePlan.tp2 == null ? null : Number(activePlan.tp2);
     const levels = [
       { price: Number(activePlan.entry_price), title: "ENTRY", color: "#d7e1e3", style: LineStyle.Solid },
       { price: Number(activePlan.stop), title: "STOP", color: "#ec8178", style: LineStyle.Solid },
-      ...(activePlan.tp1 ? [{ price: Number(activePlan.tp1), title: "TP1", color: "#65cfae", style: LineStyle.Dashed }] : []),
-      ...(activePlan.tp2 ? [{ price: Number(activePlan.tp2), title: "TP2", color: "#4ce0b1", style: LineStyle.Solid }] : []),
+      ...(tp1 !== null && Number.isFinite(tp1) ? [{ price: tp1, title: "TP1", color: "#65cfae", style: LineStyle.Dashed }] : []),
+      ...(tp2 !== null && Number.isFinite(tp2) ? [{ price: tp2, title: "TP2", color: "#4ce0b1", style: LineStyle.Solid }] : []),
     ];
     planLines.current = levels.map((level) => series.createPriceLine({ ...level, lineWidth: 2, axisLabelVisible: true, lineVisible: true }));
+    series.priceScale().applyOptions({ autoScale: true });
   }, [activePlan, candles]);
 
   return <div ref={container} data-testid="rtr-market-chart-canvas" className="h-full min-h-[520px] w-full" />;
