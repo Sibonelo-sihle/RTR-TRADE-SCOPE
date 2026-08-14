@@ -86,6 +86,7 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { MarketChartPage } from "@/features/market-chart/MarketChartPage";
 import { tradePrefill } from "@/features/market-chart/services/tradePrefill";
+import { TradingAccountsSettings } from "@/features/settings/TradingAccountsSettings";
 import { alertResource, strategyResource, tradeResource, useBackendCollection } from "@/services/backendData";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -2640,6 +2641,7 @@ function SettingsPage({
       />
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,.75fr)]">
         <div className="space-y-5">
+          <TradingAccountsSettings />
           <Card className="p-5">
             <SectionHead
               icon={<SlidersHorizontal size={16} />}

@@ -17,3 +17,5 @@ services:
         value: twelvedata
       - key: MARKET_DATA_API_KEY
         sync: false
+      - key: MT5_BRIDGE_TOKEN
+        sync: false

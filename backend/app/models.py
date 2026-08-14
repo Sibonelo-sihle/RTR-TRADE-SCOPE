@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
@@ -75,3 +75,25 @@ class SwingState(Timestamped, Base):
     tp2_structure_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     rr_to_tp1: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
     rr_to_tp2: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
+
+class TradingAccount(Timestamped, Base):
+    __tablename__ = "trading_accounts"
+    external_account_key: Mapped[str] = mapped_column(String(64), unique=True)
+    label: Mapped[str] = mapped_column(String(100)); broker: Mapped[str] = mapped_column(String(100)); login_last4: Mapped[str] = mapped_column(String(4)); server: Mapped[str] = mapped_column(String(120))
+    connection_type: Mapped[str] = mapped_column(String(30), default="WINDOWS_BRIDGE"); status: Mapped[str] = mapped_column(String(20), default="DISCONNECTED")
+    currency: Mapped[Optional[str]] = mapped_column(String(10)); balance: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8)); equity: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8)); margin: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8)); free_margin: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8)); leverage: Mapped[Optional[int]] = mapped_column(Integer)
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True)); last_error: Mapped[Optional[str]] = mapped_column(Text)
+
+class MT5Position(Timestamped, Base):
+    __tablename__ = "mt5_positions"; __table_args__ = (UniqueConstraint("account_id", "position_ticket", name="uq_mt5_position"),)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trading_accounts.id", ondelete="CASCADE"), index=True); position_ticket: Mapped[int] = mapped_column(BigInteger)
+    symbol: Mapped[str] = mapped_column(String(30)); direction: Mapped[str] = mapped_column(String(4)); opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); entry_price: Mapped[Decimal] = mapped_column(Numeric(20, 8)); current_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8)); volume: Mapped[Decimal] = mapped_column(Numeric(20, 8)); stop_loss: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8)); take_profit: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8)); floating_pnl: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8)); comment: Mapped[str] = mapped_column(Text, default=""); magic: Mapped[Optional[int]] = mapped_column(BigInteger); is_open: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class MT5Deal(Timestamped, Base):
+    __tablename__ = "mt5_deals"; __table_args__ = (UniqueConstraint("account_id", "deal_ticket", name="uq_mt5_deal"),)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trading_accounts.id", ondelete="CASCADE"), index=True); deal_ticket: Mapped[int] = mapped_column(BigInteger); order_ticket: Mapped[Optional[int]] = mapped_column(BigInteger); position_ticket: Mapped[Optional[int]] = mapped_column(BigInteger, index=True)
+    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); symbol: Mapped[str] = mapped_column(String(30)); direction: Mapped[str] = mapped_column(String(4)); entry_kind: Mapped[str] = mapped_column(String(20)); volume: Mapped[Decimal] = mapped_column(Numeric(20, 8)); price: Mapped[Decimal] = mapped_column(Numeric(20, 8)); profit: Mapped[Decimal] = mapped_column(Numeric(20, 8)); commission: Mapped[Decimal] = mapped_column(Numeric(20, 8)); swap: Mapped[Decimal] = mapped_column(Numeric(20, 8)); fee: Mapped[Decimal] = mapped_column(Numeric(20, 8)); comment: Mapped[str] = mapped_column(Text, default=""); magic: Mapped[Optional[int]] = mapped_column(BigInteger)
+
+class MT5SyncRun(Timestamped, Base):
+    __tablename__ = "mt5_sync_runs"
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trading_accounts.id", ondelete="CASCADE"), index=True); status: Mapped[str] = mapped_column(String(20)); positions_received: Mapped[int] = mapped_column(Integer, default=0); deals_received: Mapped[int] = mapped_column(Integer, default=0); new_deals: Mapped[int] = mapped_column(Integer, default=0); cursor_ticket: Mapped[Optional[int]] = mapped_column(BigInteger); message: Mapped[str] = mapped_column(Text, default="")

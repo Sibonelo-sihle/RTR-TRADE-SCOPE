@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 from decimal import Decimal
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,10 +14,12 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import SessionLocal, engine, get_db
 from .market_schemas import CandleOut, MarketDataStatusOut
-from .models import Alert, Strategy, SwingState, Trade
+from .models import Alert, MT5Deal, MT5Position, MT5SyncRun, Strategy, SwingState, Trade, TradingAccount
+from .mt5_schemas import BridgeHeartbeatIn, BridgeSyncIn, MT5DealOut, MT5PositionOut, MT5SyncRunOut, TradingAccountCreate, TradingAccountOut
 from .schemas import AlertIn, AlertOut, StrategyIn, StrategyOut, SwingStateIn, SwingStateOut, TradeIn, TradeOut
 from .services.market_data import MT5MarketDataProvider, MarketDataService, MarketDataUnavailable, TwelveDataMarketDataProvider
 from .services.alert_monitor import AlertMonitor
+from .services.mt5_sync import account_payload, ingest_mt5_sync, record_mt5_heartbeat
 
 def configured_market_provider():
     provider_name = settings.market_data_provider.strip().lower()
@@ -135,6 +139,34 @@ crud_routes("strategies", Strategy, StrategyIn, StrategyOut)
 def check_alerts(db: Session = Depends(get_db)):
     return alert_monitor.check(db)
 crud_routes("alerts", Alert, AlertIn, AlertOut)
+
+def bridge_auth(x_mt5_bridge_token: str | None = Header(None)):
+    configured = (settings.mt5_bridge_token or "").strip()
+    if len(configured) < 32: raise HTTPException(503, "MT5 bridge ingestion is not securely configured")
+    if not x_mt5_bridge_token or not secrets.compare_digest(x_mt5_bridge_token, configured): raise HTTPException(401, "Invalid MT5 bridge credentials")
+
+@app.get("/api/trading-accounts", response_model=list[TradingAccountOut])
+def trading_accounts(db: Session = Depends(get_db)): return [account_payload(item) for item in db.scalars(select(TradingAccount).order_by(TradingAccount.created_at.desc())).all()]
+@app.post("/api/trading-accounts", response_model=TradingAccountOut, status_code=201)
+def create_trading_account(data: TradingAccountCreate, db: Session = Depends(get_db)):
+    key = hashlib.sha256(f"{data.server.strip().lower()}:{data.login}".encode()).hexdigest()
+    account = db.scalar(select(TradingAccount).where(TradingAccount.external_account_key == key))
+    if not account: account = TradingAccount(external_account_key=key, label=data.label, broker=data.broker, login_last4=data.login[-4:], server=data.server, connection_type=data.connection_type, status="DISCONNECTED"); db.add(account)
+    else: account.label = data.label; account.broker = data.broker; account.server = data.server
+    db.commit(); db.refresh(account); return account_payload(account)
+@app.get("/api/trading-accounts/{account_id}/positions", response_model=list[MT5PositionOut])
+def mt5_positions(account_id: str, db: Session = Depends(get_db)): return db.scalars(select(MT5Position).where(MT5Position.account_id == account_id, MT5Position.is_open.is_(True)).order_by(MT5Position.opened_at.desc())).all()
+@app.get("/api/trading-accounts/{account_id}/deals", response_model=list[MT5DealOut])
+def mt5_deals(account_id: str, db: Session = Depends(get_db)): return db.scalars(select(MT5Deal).where(MT5Deal.account_id == account_id).order_by(MT5Deal.executed_at.desc()).limit(500)).all()
+@app.get("/api/trading-accounts/{account_id}/sync-runs", response_model=list[MT5SyncRunOut])
+def mt5_sync_runs(account_id: str, db: Session = Depends(get_db)): return db.scalars(select(MT5SyncRun).where(MT5SyncRun.account_id == account_id).order_by(MT5SyncRun.created_at.desc()).limit(20)).all()
+@app.post("/api/mt5/bridge/sync", dependencies=[Depends(bridge_auth)])
+def mt5_bridge_sync(payload: BridgeSyncIn, db: Session = Depends(get_db)): return ingest_mt5_sync(db, payload)
+@app.post("/api/mt5/bridge/heartbeat", dependencies=[Depends(bridge_auth)])
+def mt5_bridge_heartbeat(payload: BridgeHeartbeatIn, db: Session = Depends(get_db)):
+    account = record_mt5_heartbeat(db, payload)
+    if not account: raise HTTPException(404, "Trading account is not registered")
+    return account
 
 @app.get("/api/swings", response_model=list[SwingStateOut])
 def swings(symbol: str | None = None, db: Session = Depends(get_db)):
