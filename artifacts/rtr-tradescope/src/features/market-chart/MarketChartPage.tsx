@@ -12,7 +12,7 @@ import { AnalysisSettings } from "@/features/market-chart/AnalysisSettings";
 import { analyzeMultiTimeframe } from "@/features/market-chart/analysis/multiTimeframe";
 import { analyzeSignals } from "@/features/market-chart/analysis/signals";
 import { analyzeHistoricalSwingSignals, visibleSwingMarkers } from "@/features/market-chart/analysis/swingSignals";
-import type { AnalysisSettings as SignalSettings, PersistedSwingState, RTRSignal, StructureVisibility } from "@/features/market-chart/analysis/types";
+import type { AnalysisSettings as SignalSettings, PersistedSwingState, RTRSignal, StructureVisibility, SwingTradePlan } from "@/features/market-chart/analysis/types";
 import type { PriceAlert } from "@/types/domain";
 import { marketData } from "@/services/marketData";
 import { toast } from "@/hooks/use-toast";
@@ -46,6 +46,11 @@ function errorMessage(error: unknown) {
   return error.message;
 }
 
+function persistedPlanSignal(plan: PersistedSwingState): SwingTradePlan | null {
+  if (!plan.four_h_bias || !plan.four_h_zone_id || !plan.one_h_setup_id || plan.entry_price === null || plan.atr_buffer === null || plan.stop === null) return null;
+  return { id: `SWING-${plan.direction}-${plan.four_h_zone_id}-${plan.one_h_setup_id}-${plan.signal_timestamp}`, symbol: plan.symbol, timeframe: plan.entry_timeframe, direction: plan.direction, timestamp: plan.signal_timestamp, price: Number(plan.entry_price), score: plan.score, zoneTimeframe: "4H", zoneType: plan.zone_type, zoneId: plan.four_h_zone_id, zoneLower: Number(plan.zone_lower), zoneUpper: Number(plan.zone_upper), signalKind: "SWING", rsi: 0, reason: ["4H bias", "1H setup", `${plan.entry_timeframe} entry confirmation`], missing: [], fourHourBias: plan.four_h_bias, fourHourZoneId: plan.four_h_zone_id, oneHourSetupId: plan.one_h_setup_id, atrBuffer: Number(plan.atr_buffer), stop: Number(plan.stop), tp1: plan.tp1 === null ? null : Number(plan.tp1), tp2: plan.tp2 === null ? null : Number(plan.tp2), tp1StructureId: plan.tp1_structure_id, tp2StructureId: plan.tp2_structure_id, rrToTp1: plan.rr_to_tp1 === null ? null : Number(plan.rr_to_tp1), rrToTp2: plan.rr_to_tp2 === null ? null : Number(plan.rr_to_tp2), actionable: plan.tp1 !== null || plan.tp2 !== null };
+}
+
 export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAlert) => Promise<PriceAlert> }) {
   const [, setLocation] = useLocation();
   const chartRef = useRef<MarketChartHandle>(null);
@@ -60,7 +65,7 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
   const [nextRefreshAt, setNextRefreshAt] = useState<Date | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [activity, setActivity] = useState<AnalysisActivity[]>([]);
-  const [historicalFilter, setHistoricalFilter] = useState<"ALL" | "BUY" | "SELL" | "HIDE">("ALL");
+  const [historicalFilter, setHistoricalFilter] = useState<"ALL" | "BUY" | "SELL" | "HIDE">("HIDE");
   const [showExecutionMarkers, setShowExecutionMarkers] = useState(false);
   const [swings, setSwings] = useState<PersistedSwingState[]>([]);
   const [visibility, setVisibility] = useState<StructureVisibility>({ supply: true, demand: true, levels: true, hideMitigated: false, timeframes: { "4H": true, "1H": true, "15m": true, "5m": true } });
@@ -158,7 +163,7 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
   const visibleLevels = useMemo(() => analysis?.levels.filter((level) => visibility.levels && visibility.timeframes[level.timeframe]) ?? [], [analysis, visibility]);
   const candles = candleSets?.[timeframe] ?? [];
   const signalAnalysis = useMemo(() => analysis && candles.length ? analyzeSignals(symbol, timeframe, candles, analysis, signalSettings) : null, [analysis, candles, signalSettings, symbol, timeframe]);
-  const swingHistory = useMemo(() => candleSets ? analyzeHistoricalSwingSignals(symbol, candleSets, signalSettings, 30) : { primary: [], execution: [] }, [candleSets, signalSettings, symbol]);
+  const swingHistory = useMemo(() => candleSets ? analyzeHistoricalSwingSignals(symbol, candleSets, signalSettings, 30) : { primary: [], holding: [], execution: [] }, [candleSets, signalSettings, symbol]);
   const entryStates = useMemo(() => {
     if (!analysis || !candleSets) return { "15m": "WAITING", "5m": "WAITING" } as const;
     const state = (entryTimeframe: "15m" | "5m") => {
@@ -169,8 +174,12 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
   }, [analysis, candleSets, signalSettings, symbol]);
   const visibleHistoricalSignals = useMemo(() => visibleSwingMarkers(swingHistory, historicalFilter, showExecutionMarkers), [historicalFilter, showExecutionMarkers, swingHistory]);
   const activeSwing = swings.find((item) => item.status === "ACTIVE") ?? null;
+  const activePlanSignal = activeSwing ? swingHistory.primary.find((signal) => signal.timestamp === activeSwing.signal_timestamp && signal.fourHourZoneId === activeSwing.four_h_zone_id) ?? persistedPlanSignal(activeSwing) : null;
+  const chartSignals = useMemo(() => activePlanSignal ? [activePlanSignal, ...visibleHistoricalSignals.filter((signal) => signal.id !== activePlanSignal.id)] : visibleHistoricalSignals, [activePlanSignal, visibleHistoricalSignals]);
+  const latestPlan = [...swingHistory.primary, ...swingHistory.holding].sort((first, second) => first.timestamp - second.timestamp).at(-1) ?? null;
   const potentialReversal = Boolean(activeSwing && swingHistory.primary.some((signal) => signal.direction !== activeSwing.direction && signal.timestamp > activeSwing.signal_timestamp));
   const availableSymbols = status?.symbols.filter((item): item is MarketSymbol => item in symbolLabels) ?? [symbol];
+  useEffect(() => { if (activeSwing) setTimeframe(activeSwing.entry_timeframe); }, [activeSwing?.id]);
   useEffect(() => {
     let active = true;
     swingState.list(symbol).then((items) => { if (active) setSwings(items); }).catch(() => { if (active) { setSwings([]); toast({ title: "Swing state unavailable", description: "Market analysis remains visible, but swing persistence could not be loaded." }); } });
@@ -188,7 +197,8 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
     if (!candleSets || !activeSwing) return;
     const close = candleSets[activeSwing.htf_timeframe].at(-2)?.close;
     if (close === undefined) return;
-    const invalid = activeSwing.zone_type === "Demand" ? close < Number(activeSwing.zone_lower) : close > Number(activeSwing.zone_upper);
+    const invalidationPrice = Number(activeSwing.stop ?? (activeSwing.zone_type === "Demand" ? activeSwing.zone_lower : activeSwing.zone_upper));
+    const invalid = activeSwing.zone_type === "Demand" ? close < invalidationPrice : close > invalidationPrice;
     if (!invalid) return;
     swingState.invalidate(activeSwing.id).then((saved) => setSwings((current) => current.map((item) => item.id === saved.id ? saved : item))).catch(() => toast({ title: "Swing status not saved", description: "Zone invalidation could not be persisted." }));
   }, [activeSwing, candleSets]);
@@ -266,12 +276,12 @@ export function MarketChartPage({ createAlert }: { createAlert: (alert: PriceAle
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_230px]">
         <div className="relative min-h-[520px] overflow-hidden rounded-xl border border-[#273541] bg-[#0d1118] shadow-[0_18px_50px_rgba(0,0,0,.22)]" style={{ height: "clamp(520px, 70vh, 760px)" }}>
-          {candles.length > 0 && analysis && signalAnalysis && <MarketChart ref={chartRef} candles={candles} zones={visibleZones} levels={visibleLevels} signals={signalSettings.showMarkers ? visibleHistoricalSignals : []} onSelectSignal={setSelected} />}
+          {candles.length > 0 && analysis && signalAnalysis && <MarketChart ref={chartRef} candles={candles} zones={visibleZones} levels={visibleLevels} signals={signalSettings.showMarkers ? chartSignals : []} activePlan={activeSwing} onSelectSignal={setSelected} />}
           {(loading || (error && !candles.length)) && <div className="absolute inset-0 grid place-items-center bg-[#0d1118] p-6 text-center">
             {loading ? <div><RefreshCw size={22} className="mx-auto animate-spin text-[#4ce0b1]" /><div className="mt-3 text-[11px] text-[#7f909a]">Loading real {symbol} multi-timeframe structure…</div></div> : <div className="max-w-md"><AlertTriangle size={24} className="mx-auto text-[#df8a72]" /><div className="mt-3 text-[13px] font-bold text-[#d9e3e4]">Market data unavailable</div><div role="alert" className="mt-2 text-[11px] leading-relaxed text-[#81909a]">{error}</div></div>}
           </div>}
         </div>
-        {analysis && signalAnalysis && <StructurePanel symbol={symbol} timeframe={timeframe} candles={candles} analysis={analysis} signals={signalAnalysis} settings={signalSettings} lastUpdated={lastUpdated} nextRefreshAt={nextRefreshAt} now={now} activity={activity} activeSwing={activeSwing} potentialReversal={potentialReversal} entryStates={entryStates} onCloseSwing={activeSwing ? async () => { try { const saved = await swingState.close(activeSwing.id); setSwings((current) => current.map((item) => item.id === saved.id ? saved : item)); } catch { toast({ title: "Swing was not closed", description: "The backend could not persist the manual close." }); } } : undefined} />}
+        {analysis && signalAnalysis && <StructurePanel symbol={symbol} timeframe={timeframe} candles={candles} analysis={analysis} signals={signalAnalysis} settings={signalSettings} lastUpdated={lastUpdated} nextRefreshAt={nextRefreshAt} now={now} activity={activity} activeSwing={activeSwing} latestPlan={latestPlan} potentialReversal={potentialReversal} entryStates={entryStates} onCloseSwing={activeSwing ? async () => { try { const saved = await swingState.close(activeSwing.id); setSwings((current) => current.map((item) => item.id === saved.id ? saved : item)); } catch { toast({ title: "Swing was not closed", description: "The backend could not persist the manual close." }); } } : undefined} />}
       </div>
       <div className="mt-3 flex items-center gap-2 text-[10px] text-[#62737e]"><CandlestickChart size={13} /> Candles and future RTR analysis use the same provider dataset. Analysis only — no trade execution.</div>
     </>

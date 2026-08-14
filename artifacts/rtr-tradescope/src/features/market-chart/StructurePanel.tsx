@@ -1,5 +1,5 @@
 import { deriveLiveAnalysisStatus } from "@/features/market-chart/analysis/liveStatus";
-import type { AnalysisSettings, PersistedSwingState, SignalAnalysis, StructureAnalysis } from "@/features/market-chart/analysis/types";
+import type { AnalysisSettings, PersistedSwingState, SignalAnalysis, StructureAnalysis, SwingTradePlan } from "@/features/market-chart/analysis/types";
 import type { MarketCandle, MarketSymbol, MarketTimeframe } from "@/types/market";
 
 export interface AnalysisActivity { id: string; time: Date; message: string }
@@ -22,7 +22,7 @@ function Check({ label, value }: { label: string; value: boolean }) {
   return <div className="flex items-center justify-between gap-3"><span className="text-[#83949d]">{label}</span><span className={value ? "text-[#66dcb8]" : "text-[#53646f]"}>{value ? "✓" : "—"}</span></div>;
 }
 
-export function StructurePanel({ symbol, timeframe, candles, analysis, signals, settings, lastUpdated, nextRefreshAt, now, activity, activeSwing, potentialReversal, entryStates, onCloseSwing }: {
+export function StructurePanel({ symbol, timeframe, candles, analysis, signals, settings, lastUpdated, nextRefreshAt, now, activity, activeSwing, latestPlan, potentialReversal, entryStates, onCloseSwing }: {
   symbol: MarketSymbol;
   timeframe: MarketTimeframe;
   candles: MarketCandle[];
@@ -34,6 +34,7 @@ export function StructurePanel({ symbol, timeframe, candles, analysis, signals, 
   now: number;
   activity: AnalysisActivity[];
   activeSwing: PersistedSwingState | null;
+  latestPlan: SwingTradePlan | null;
   potentialReversal: boolean;
   entryStates: { "15m": string; "5m": string };
   onCloseSwing?: () => Promise<void>;
@@ -47,6 +48,7 @@ export function StructurePanel({ symbol, timeframe, candles, analysis, signals, 
   const statusBackground = live.state === "BUY RETEST" ? "border-[#2c6858] bg-[#17352e]" : live.state === "SELL RETEST" ? "border-[#714348] bg-[#342228]" : "border-[#2c3a45] bg-[#111920]";
   const fourHourZone = analysis.zones.find((zone) => zone.timeframe === "4H" && zone.state !== "Invalid");
   const bias = activeSwing ? activeSwing.direction === "BUY" ? "BULLISH" : "BEARISH" : live.direction;
+  const plannerState = potentialReversal ? "POTENTIAL REVERSAL" : activeSwing ? `ACTIVE ${activeSwing.direction === "BUY" ? "LONG" : "SHORT"}` : latestPlan?.actionable ? "ENTRY READY" : latestPlan ? "HOLD / NO STRUCTURAL TARGET" : signals.currentRetest ? "WAITING FOR RETEST" : live.zone ? "WATCHING" : "SCANNING";
   return (
     <aside data-testid="rtr-structure-panel" className="rounded-xl border border-[#263541] bg-[#121b23] p-4">
       <div className="font-mono text-[9px] uppercase tracking-[.18em] text-[#4ce0b1]">RTR Swing Engine</div>
@@ -64,17 +66,20 @@ export function StructurePanel({ symbol, timeframe, candles, analysis, signals, 
       </div>
       <div className="mt-3 rounded-lg border border-[#2a3944] bg-[#0e171e] p-3 text-[9px]">
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[#73858f]">
-          <span>Bias</span><span className="text-right font-bold text-[#c9d5d7]">{bias}</span>
-          <span>4H Zone</span><span className="text-right text-[#b4c1c5]">{fourHourZone?.kind.toUpperCase() ?? "NONE"}</span>
-          <span>1H Setup</span><span className="text-right text-[#b4c1c5]">{activeSwing ? "CONFIRMED" : "WATCHING"}</span>
+          <span>4H Bias</span><span className="text-right font-bold text-[#c9d5d7]">{activeSwing?.four_h_bias ?? latestPlan?.fourHourBias ?? bias}</span>
+          <span>4H Zone</span><span className="text-right text-[#b4c1c5]">{activeSwing?.four_h_zone_id ?? latestPlan?.fourHourZoneId ?? fourHourZone?.kind.toUpperCase() ?? "NONE"}</span>
+          <span>1H Setup</span><span className="text-right text-[#b4c1c5]">{activeSwing?.one_h_setup_id ?? latestPlan?.oneHourSetupId ?? "WATCHING"}</span>
           <span>15m Entry</span><span className="text-right text-[#b4c1c5]">{entryStates["15m"]}</span>
           <span>5m Entry</span><span className="text-right text-[#b4c1c5]">{entryStates["5m"]}</span>
-          <span>Swing Status</span><span className="text-right font-bold text-[#69dcb9]">{activeSwing ? `ACTIVE ${activeSwing.direction === "BUY" ? "LONG" : "SHORT"}` : "WATCHING"}</span>
-          <span>Entry Signal</span><span className="text-right font-bold text-[#c9d5d7]">{activeSwing ? "CONFIRMED" : "WAITING FOR ENTRY"}</span>
+          <span>Confluence</span><span className="text-right font-bold text-[#c9d5d7]">{activeSwing?.score ?? latestPlan?.score ?? "—"}/5</span>
         </div>
         {potentialReversal && <div className="mt-3 rounded border border-[#7b5e31] bg-[#302617] p-2 text-center font-bold text-[#e0bd68]">POTENTIAL REVERSAL</div>}
         {activeSwing && onCloseSwing && <button type="button" onClick={() => void onCloseSwing()} className="mt-3 w-full rounded border border-[#3a4b56] px-2 py-1.5 text-[9px] font-semibold text-[#9babb1] hover:bg-[#17232c]">Close Swing</button>}
       </div>
+      {(activeSwing || latestPlan) && <div className="mt-3 rounded-lg border border-[#30404c] bg-[#101920] p-3 text-[9px] text-[#82939d]">
+        <div className="font-bold text-[#d3dddf]">{plannerState}</div>
+        <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1"><span>ENTRY</span><span className="text-right">{Number(activeSwing?.entry_price ?? latestPlan?.price).toFixed(symbol === "XAUUSD" ? 2 : 5)}</span><span>STOP</span><span className="text-right text-[#e99a91]">{Number(activeSwing?.stop ?? latestPlan?.stop).toFixed(symbol === "XAUUSD" ? 2 : 5)}</span><span>TP1</span><span className="text-right">{activeSwing?.tp1 ?? latestPlan?.tp1 ? `${Number(activeSwing?.tp1 ?? latestPlan?.tp1).toFixed(symbol === "XAUUSD" ? 2 : 5)} · ${Number(activeSwing?.rr_to_tp1 ?? latestPlan?.rrToTp1).toFixed(2)}R` : "UNAVAILABLE"}</span><span>TP2</span><span className="text-right text-[#69dcb9]">{activeSwing?.tp2 ?? latestPlan?.tp2 ? `${Number(activeSwing?.tp2 ?? latestPlan?.tp2).toFixed(symbol === "XAUUSD" ? 2 : 5)} · ${Number(activeSwing?.rr_to_tp2 ?? latestPlan?.rrToTp2).toFixed(2)}R` : "UNAVAILABLE"}</span></div>
+      </div>}
       <div className="mt-4 font-mono text-[9px] uppercase tracking-[.16em] text-[#82949d]">Current Setup</div>
       <div className="mt-2 space-y-1.5 text-[9px]">
         <div className="flex justify-between gap-3"><span className="text-[#60727e]">Direction</span><span className="font-semibold text-[#c3d0d3]">{live.direction}</span></div>

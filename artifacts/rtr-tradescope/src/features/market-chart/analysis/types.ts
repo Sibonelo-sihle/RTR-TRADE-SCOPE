@@ -85,6 +85,21 @@ export interface RTRSignal {
   missing: string[];
 }
 
+export interface SwingTradePlan extends RTRSignal {
+  fourHourBias: "BULLISH" | "BEARISH";
+  fourHourZoneId: string;
+  oneHourSetupId: string;
+  atrBuffer: number;
+  stop: number;
+  tp1: number | null;
+  tp2: number | null;
+  tp1StructureId: string | null;
+  tp2StructureId: string | null;
+  rrToTp1: number | null;
+  rrToTp2: number | null;
+  actionable: boolean;
+}
+
 export type SwingStateStatus = "ACTIVE" | "CLOSED" | "INVALIDATED";
 export interface PersistedSwingState {
   id: string;
@@ -102,6 +117,18 @@ export interface PersistedSwingState {
   created_at: string;
   updated_at: string;
   closed_at: string | null;
+  four_h_bias: "BULLISH" | "BEARISH" | null;
+  four_h_zone_id: string | null;
+  one_h_setup_id: string | null;
+  entry_price: number | null;
+  atr_buffer: number | null;
+  stop: number | null;
+  tp1: number | null;
+  tp2: number | null;
+  tp1_structure_id: string | null;
+  tp2_structure_id: string | null;
+  rr_to_tp1: number | null;
+  rr_to_tp2: number | null;
 }
 
 export interface SignalAnalysis {

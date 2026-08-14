@@ -1,17 +1,19 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import { CandlestickSeries, ColorType, CrosshairMode, createChart, createSeriesMarkers, type IChartApi, type SeriesMarker, type UTCTimestamp } from "lightweight-charts";
+import { CandlestickSeries, ColorType, CrosshairMode, createChart, createSeriesMarkers, LineStyle, type IChartApi, type IPriceLine, type ISeriesApi, type SeriesMarker, type UTCTimestamp } from "lightweight-charts";
 import { StructureOverlay } from "@/features/market-chart/StructureOverlay";
 import { signalMarkers } from "@/features/market-chart/services/signalMarkers";
-import type { RTRSignal, StructureLevel, StructureZone } from "@/features/market-chart/analysis/types";
+import type { PersistedSwingState, RTRSignal, StructureLevel, StructureZone } from "@/features/market-chart/analysis/types";
 import type { MarketCandle } from "@/types/market";
 
 export interface MarketChartHandle { takeScreenshot: () => HTMLCanvasElement | null }
 
-export const MarketChart = forwardRef<MarketChartHandle, { candles: MarketCandle[]; zones: StructureZone[]; levels: StructureLevel[]; signals: RTRSignal[]; onSelectSignal?: (signal: RTRSignal) => void }>(function MarketChart({ candles, zones, levels, signals, onSelectSignal }, ref) {
+export const MarketChart = forwardRef<MarketChartHandle, { candles: MarketCandle[]; zones: StructureZone[]; levels: StructureLevel[]; signals: RTRSignal[]; activePlan?: PersistedSwingState | null; onSelectSignal?: (signal: RTRSignal) => void }>(function MarketChart({ candles, zones, levels, signals, activePlan, onSelectSignal }, ref) {
   const container = useRef<HTMLDivElement>(null);
   const chartApi = useRef<IChartApi | null>(null);
   const overlay = useRef<StructureOverlay | null>(null);
   const markerApi = useRef<{ setMarkers: (markers: SeriesMarker<UTCTimestamp>[]) => void } | null>(null);
+  const seriesApi = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const planLines = useRef<IPriceLine[]>([]);
   const signalsRef = useRef(signals);
   const selectRef = useRef(onSelectSignal);
   signalsRef.current = signals;
@@ -38,6 +40,7 @@ export const MarketChart = forwardRef<MarketChartHandle, { candles: MarketCandle
       wickUpColor: "#75d8bc",
       wickDownColor: "#db7772",
     });
+    seriesApi.current = series;
     series.setData(candles.map((candle) => ({
       time: candle.time as UTCTimestamp,
       open: candle.open,
@@ -58,6 +61,7 @@ export const MarketChart = forwardRef<MarketChartHandle, { candles: MarketCandle
     return () => {
       overlay.current = null;
       markerApi.current = null;
+      seriesApi.current = null;
       chartApi.current = null;
       chart.remove();
     };
@@ -67,6 +71,20 @@ export const MarketChart = forwardRef<MarketChartHandle, { candles: MarketCandle
 
   useEffect(() => { overlay.current?.update(zones, levels); }, [zones, levels]);
   useEffect(() => { markerApi.current?.setMarkers(signalMarkers(signals)); }, [signals]);
+  useEffect(() => {
+    const series = seriesApi.current;
+    if (!series) return;
+    for (const line of planLines.current) series.removePriceLine(line);
+    planLines.current = [];
+    if (!activePlan?.entry_price || !activePlan.stop) return;
+    const levels = [
+      { price: Number(activePlan.entry_price), title: "ENTRY", color: "#d7e1e3", style: LineStyle.Solid },
+      { price: Number(activePlan.stop), title: "STOP", color: "#ec8178", style: LineStyle.Solid },
+      ...(activePlan.tp1 ? [{ price: Number(activePlan.tp1), title: "TP1", color: "#65cfae", style: LineStyle.Dashed }] : []),
+      ...(activePlan.tp2 ? [{ price: Number(activePlan.tp2), title: "TP2", color: "#4ce0b1", style: LineStyle.Solid }] : []),
+    ];
+    planLines.current = levels.map((level) => series.createPriceLine({ ...level, lineWidth: 2, axisLabelVisible: true, lineVisible: true }));
+  }, [activePlan, candles]);
 
   return <div ref={container} data-testid="rtr-market-chart-canvas" className="h-full min-h-[520px] w-full" />;
 });
